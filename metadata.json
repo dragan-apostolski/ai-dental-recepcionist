@@ -1,0 +1,7 @@
+{
+  "name": "AI Recepnionist",
+  "description": "An app for building AI receptionist (voice agent) for small/medium sized business. The voice agent is able to take calls from clients and book appointments as well as inform clients about the services of the business. It integrates with your calendar for live checking of availability and booking appointments. The agent  can be configured to speak in any voice, with different tonality, pitch, sex, and it can be prompted to behave in a specific way. ",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
