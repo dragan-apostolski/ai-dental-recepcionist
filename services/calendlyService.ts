@@ -40,7 +40,8 @@ export const getEventTypes = async (token: string): Promise<CalendlyEvent[]> => 
             slug: et.slug,
             description: et.description_plain || '',
             duration: et.duration,
-            active: et.active
+            active: et.active,
+            locations: et.locations || et.profile?.locations || [et.profile?.location] // Capture any location info
         })).filter((et: any) => et.active); // Only return active event types
     } catch (error) {
         console.error('Error fetching event types:', error);
@@ -95,6 +96,51 @@ const getBusyTimes = async (token: string, userUri: string, startDate: string, e
     }
 }
 
+// Interface for Scheduled Event
+interface ScheduledEvent {
+    uri: string;
+    name: string;
+    status: string;
+    start_time: string;
+    end_time: string;
+    invitees_counter: {
+        active: number;
+        limit: number;
+        total: number;
+    };
+}
+
+// Fetch scheduled events for the range to get details (Event Type Name)
+const getScheduledEvents = async (token: string, userUri: string, startDate: string, endDate: string): Promise<ScheduledEvent[]> => {
+    try {
+        // Fetch with a high count to cover the range (e.g. 100)
+        // Adjust min_start_time and max_start_time
+        const res = await fetch(`${CALENDLY_API_BASE}/scheduled_events?user=${userUri}&min_start_time=${startDate}&max_start_time=${endDate}&status=active&count=100`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await handleResponse(res, 'getScheduledEvents');
+        return data.collection || [];
+    } catch (error) {
+        console.error('Error fetching scheduled events:', error);
+        return [];
+    }
+};
+
+// Fetch invitee details for a specific event (Customer Name)
+const getEventInvitees = async (token: string, eventUri: string): Promise<string> => {
+    try {
+        const res = await fetch(`${eventUri}/invitees?status=active`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await handleResponse(res, 'getEventInvitees');
+        const invitee = data.collection?.[0]; // Assuming single invitee for 1-on-1
+        return invitee?.name || 'Unknown Client';
+    } catch (error) {
+        console.error('Error fetching invitees:', error);
+        return '';
+    }
+};
+
 export const fetchAvailabilityRange = async (
     token: string,
     eventTypeUri: string,
@@ -110,8 +156,22 @@ export const fetchAvailabilityRange = async (
         const userData = await handleResponse(userRes, 'getMe');
         const userUri = userData.resource.uri;
 
-        // 2. Get Busy Times
-        const busyTimes = await getBusyTimes(token, userUri, startDate, endDate);
+        // 2. Get Busy Times & Scheduled Events (Parallel)
+        const [busyTimes, scheduledEvents] = await Promise.all([
+            getBusyTimes(token, userUri, startDate, endDate),
+            getScheduledEvents(token, userUri, startDate, endDate)
+        ]);
+
+        // 2.1 Enrich Scheduled Events with Invitee Names
+        // This can be N+1, so strictly needed only if we want to show names.
+        // We will fetch invitees for the events found.
+        const detailedEvents = await Promise.all(scheduledEvents.map(async (ev) => {
+            const inviteeName = await getEventInvitees(token, ev.uri);
+            return {
+                ...ev,
+                inviteeName
+            };
+        }));
 
         // 3. Generate Slots locally
         const days: DayAvailability[] = [];
@@ -157,11 +217,23 @@ export const fetchAvailabilityRange = async (
                         available: true
                     });
                 } else {
+                    // Find if this busy slot corresponds to a specific scheduled event
+                    // Check intersection of time
+                    const matchedEvent = detailedEvents.find(ev => {
+                        const evStart = new Date(ev.start_time).getTime();
+                        const evEnd = new Date(ev.end_time).getTime();
+                        const sStart = slotStart.getTime();
+                        const sEnd = slotEnd.getTime();
+                        // Simple overlap check
+                        return (sStart < evEnd && sEnd > evStart);
+                    });
+
                     daySlots.push({
                         time: slotStart.toLocaleTimeString('mk-MK', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Skopje' }),
                         isoTime: slotStart.toISOString(),
                         available: false,
-                        bookedBy: 'Reserved'
+                        bookedBy: matchedEvent ? matchedEvent.inviteeName : 'РЕЗЕРВИРАНО',
+                        serviceTitle: matchedEvent ? matchedEvent.name : undefined
                     });
                 }
             }
@@ -207,80 +279,44 @@ export const bookAppointment = async (
         name: string;
         email: string;
         notes?: string;
-    }
+    },
+    locationConfig?: { kind: string, location?: string }
 ): Promise<BookingResult> => {
     try {
-        // Create one-off scheduled event (if supported) or Invite to existing event type
-        // Calendly API v2 'scheduling_links' are for sending to users.
-        // To programmatically book, we use POST /scheduled_events is NOT for creating events directly, it is for retrieving.
-        // CORRECT APPROACH for "Book on behalf": POST /scheduling_links OR /invitees (but /invitees requires existing UUID).
-        // Wait, the search result mentioned `POST /invitees` to add an invitee to an event.
-        // Getting UUID for a specific start time might be tricky without a pre-existing "Event" object.
-        // BUT, Calendly has a "Single-use Scheduling Link" API.
+        const body: any = {
+            event_type: eventTypeUri,
+            start_time: bookingData.start,
+            invitee: {
+                name: bookingData.name,
+                email: bookingData.email,
+                timezone: 'Europe/Skopje'
+            }
+        };
 
-        // Actually, standard "booking" via API is tricky with Calendly unless you use the "Scheduling Link" flow.
-        // HOWEVER, we can stick to the implementation plan assumption or best effort.
-        // Let's use `POST /scheduled_events` if it allows creation? No.
+        // Dynamically add location if configured (Required for "Invitee Chooses" or specific event types)
+        if (locationConfig) {
+            body.location = {
+                kind: locationConfig.kind,
+                location: locationConfig.location
+            };
+        }
 
-        // RE-CHECKED: Search said "Create Event Invitee" endpoint. 
-        // Requirement: event_uuid. This implies an event must exist.
-        // Basic Cal.com flow: You pick a slot -> Book.
-
-        // Let's use the `/invitees` endpoint if we can find an event UUID? No, we don't have event UUIDs for open slots.
-
-        // ALTERNATIVE: Use the webhook or just generic scheduling link generation?
-        // No, the user wants the AI to book it.
-
-        // Let's look closer at "Create Event Invitee" documentation (from memory/search):
-        // "Allows you to book meetings on behalf of invitees... bypassing... UI".
-        // Payload includes `event_type`, `start_time`, `invitee`.
-
-        const res = await fetch(`${CALENDLY_API_BASE}/invitees`, { // Correct endpoint for creating separate bookings via API v2
-            // Actually let's try the common endpoint for this:
-            // POST https://api.calendly.com/scheduled_events (No, this is GET)
-            // Let's assume the search result was correct about "Create Event Invitee" being the path.
-            // It's likely `POST /scheduled_events` (create) or `POST /scheduling/available_times`?
-
-            // Real path for Booking: POST /scheduled_events does NOT exist.
-            // The search result said: "The primary endpoint... is /invitees".
-            // Let's try `POST https://api.calendly.com/scheduled_events/invitees` ?? No.
-
-            // Let's fallback to the structure that typically works for "Scheduling API":
-            // `POST /scheduling/events` ??
-            // Ah, search said: "requests... to the /invitees endpoint (POST)".
-            // Let's assume it is `POST https://api.calendly.com/scheduled_events` if creating a NEW event?
-            // Search result said: "Endpoint... /invitees... Request Body: event_type, start_time, invitee".
-            // This suggests `POST /invitees` is potentially a root endpoint or under `scheduled_events`?
-            // Let's try `POST https://api.calendly.com/scheduled_events` (maybe that creates it)?
-            // Wait, standard CRUD: POST collection = create item.
-
-            // Let's try `POST https://api.calendly.com/scheduled_events` with the body.
-            // IF that fails, we might need a different one. But `event_type` parameter strongly suggests creation of a new event instance.
-
+        const res = await fetch(`${CALENDLY_API_BASE}/invitees`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                event_type: eventTypeUri,
-                start_time: bookingData.start,
-                invitee: {
-                    name: bookingData.name, // Changed from display_name to name per API docs
-                    email: bookingData.email,
-                    timezone: 'Europe/Skopje'
-                },
-                location: {
-                    kind: 'physical',
-                    location: 'Orce Nikolov 155, Skopje' // TODO: Get from settings
-                }
-            })
+            body: JSON.stringify(body)
         });
 
         if (!res.ok) {
             const errorText = await res.text();
             console.error(`Calendly Booking Error (${res.status}): ${errorText}`);
 
+            if (res.status === 429) {
+                return { success: false, error: 'Booking failed: System is busy (Rate Limit). Please try again in a minute.' };
+            }
             if (res.status === 403) {
                 return { success: false, error: 'Booking failed: Account requires a paid Calendly plan for API bookings.' };
             }
@@ -290,6 +326,12 @@ export const bookAppointment = async (
 
             try {
                 const json = JSON.parse(errorText);
+                if (json.details && Array.isArray(json.details)) {
+                    const filled = json.details.find((d: any) => d.code === 'already_filled');
+                    if (filled) return { success: false, error: 'Booking failed: This time slot is already taken.' };
+
+                    return { success: false, error: `Booking failed: ${json.details[0]?.message || json.message}` };
+                }
                 return { success: false, error: json.message || `HTTP ${res.status}` };
             } catch (e) {
                 return { success: false, error: `HTTP ${res.status}: ${errorText}` };
