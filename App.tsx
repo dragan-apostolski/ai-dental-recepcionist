@@ -309,12 +309,22 @@ const App: React.FC = () => {
                 if (fc.name === 'checkAvailability') {
                   const { date, serviceName } = fc.args as any;
                   addLog(`AI checking availability for "${serviceName}" on ${date}...`);
-                  const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(serviceName.toLowerCase())) || settings.eventTypes[0];
-                  if (!et) {
+
+                  // 1. Try to find in configured services first (Exact or partial match on user-defined name)
+                  const configuredService = settings.services.find(s => s.name.toLowerCase().includes(serviceName.toLowerCase()));
+                  let eventUri = configuredService?.calendlyEventTypeUri;
+
+                  // 2. Fallback to raw event types if not found in services
+                  if (!eventUri) {
+                    const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(serviceName.toLowerCase()));
+                    eventUri = et?.uri;
+                  }
+
+                  if (!eventUri) {
                     addLog(`Service "${serviceName}" not found.`, "error");
                     result = "Error: Service not configured.";
                   } else {
-                    const avail = await checkAvailability(settings.calendlyToken, et.uri, date, settings.workingHours);
+                    const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
                     const slots = avail.slots.filter(s => s.available).map(s => s.time);
                     result = slots.length > 0 ? `Available slots: ${slots.join(', ')}` : "No slots available for this date.";
                     addLog(`Found ${slots.length} available slots.`);
@@ -322,20 +332,54 @@ const App: React.FC = () => {
                 } else if (fc.name === 'bookAppointment') {
                   const { service, date, time, name, email } = fc.args as any;
                   addLog(`AI processing booking for ${name}...`);
-                  const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(service.toLowerCase())) || settings.eventTypes[0];
-                  const avail = await checkAvailability(settings.calendlyToken, et.uri, date, settings.workingHours);
-                  const slot = avail.slots.find(s => s.time === time);
-                  const bookResult = await bookAppointment(settings.calendlyToken, et.uri, {
-                    start: slot?.isoTime || `${date}T${time}:00Z`, name, email
-                  });
-                  if (bookResult.success) {
-                    result = "Booking successful.";
-                    addLog(`Booking confirmed for ${name} at ${time}.`);
-                    refreshSchedule(settings);
+
+                  // 1. Try to find in configured services first
+                  const configuredService = settings.services.find(s => s.name.toLowerCase().includes(service.toLowerCase()));
+                  let eventUri = configuredService?.calendlyEventTypeUri;
+
+                  // 2. Fallback
+                  if (!eventUri) {
+                    const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(service.toLowerCase()));
+                    eventUri = et?.uri;
                   }
-                  else {
-                    result = `Error: ${bookResult.error}`;
-                    addLog(`Booking failed: ${bookResult.error}`, "error");
+
+                  // Default to first selected if absolutely nothing matches (Safety net)
+                  if (!eventUri && settings.selectedEventTypeIds.length > 0) {
+                    eventUri = settings.selectedEventTypeIds[0];
+                  }
+
+                  if (!eventUri) {
+                    result = "Error: Service not found or no event types configured.";
+                    addLog("Booking failed: No matching event type found.", "error");
+                  } else {
+                    const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
+                    const slot = avail.slots.find(s => s.time === time);
+
+                    // Find the full event object to get location config
+                    const eventType = settings.eventTypes.find(et => et.uri === eventUri);
+                    let locationConfig = undefined;
+
+                    if (eventType?.locations && eventType.locations.length > 0) {
+                      // Prefer physical location or take the first one available
+                      const loc = eventType.locations.find((l: any) => l.kind === 'physical') || eventType.locations[0];
+                      if (loc) {
+                        locationConfig = { kind: loc.kind, location: loc.location };
+                      }
+                    }
+
+                    const bookResult = await bookAppointment(settings.calendlyToken, eventUri, {
+                      start: slot?.isoTime || `${date}T${time}:00Z`, name, email
+                    }, locationConfig);
+
+                    if (bookResult.success) {
+                      result = "Booking successful.";
+                      addLog(`Booking confirmed for ${name} at ${time}.`);
+                      refreshSchedule(settings);
+                    }
+                    else {
+                      result = `Error: ${bookResult.error}`;
+                      addLog(`Booking failed: ${bookResult.error}`, "error");
+                    }
                   }
                 } else if (fc.name === 'endCall') {
                   addLog('AI initiated call termination.');
@@ -414,7 +458,7 @@ const App: React.FC = () => {
         {showSettings && (
           <div className="absolute inset-0 z-[100] flex animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setShowSettings(false)} />
-            <div className="relative ml-auto w-full max-w-md h-full bg-white shadow-2xl animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar border-l border-slate-100">
+            <div className="relative ml-auto w-full max-w-3xl h-full bg-white shadow-2xl animate-in slide-in-from-right duration-500 overflow-y-auto no-scrollbar border-l border-slate-100">
               <ConfigPanel settings={settings} onUpdate={setSettings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
             </div>
           </div>

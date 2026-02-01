@@ -7,6 +7,7 @@ export interface CalendlyEvent {
   description?: string;
   duration: number;
   active: boolean;
+  locations?: any[];
 }
 
 export interface BookingSlot {

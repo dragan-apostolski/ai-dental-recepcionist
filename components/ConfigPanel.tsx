@@ -34,18 +34,36 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
       description: calEvent.description || ''
     };
     const updatedServices = [...settings.services, newService];
-    handleChange('services', updatedServices);
+
+    // Check if we need to update selected IDs as well
+    let updatedSelectedIds = settings.selectedEventTypeIds;
     if (!settings.selectedEventTypeIds.includes(calEvent.uri)) {
-      handleChange('selectedEventTypeIds', [...settings.selectedEventTypeIds, calEvent.uri]);
+      updatedSelectedIds = [...settings.selectedEventTypeIds, calEvent.uri];
     }
+
+    // Single update to prevent race conditions
+    onUpdate({
+      ...settings,
+      services: updatedServices,
+      selectedEventTypeIds: updatedSelectedIds
+    });
   };
 
   const removeService = (id: string, eventTypeUri: string) => {
     const filteredServices = settings.services.filter(s => s.id !== id);
-    handleChange('services', filteredServices);
+
+    // Check if we need to remove from selected IDs
+    let updatedSelectedIds = settings.selectedEventTypeIds;
     if (!filteredServices.some(s => s.calendlyEventTypeUri === eventTypeUri)) {
-      handleChange('selectedEventTypeIds', settings.selectedEventTypeIds.filter(uri => uri !== eventTypeUri));
+      updatedSelectedIds = settings.selectedEventTypeIds.filter(uri => uri !== eventTypeUri);
     }
+
+    // Single update
+    onUpdate({
+      ...settings,
+      services: filteredServices,
+      selectedEventTypeIds: updatedSelectedIds
+    });
   };
 
   const updateService = (id: string, field: keyof Service, value: string) => {
@@ -108,6 +126,29 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
         <section className="space-y-4">
           <div className="flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-2 border-teal-500 pl-3">{t.calendar}</h3><button onClick={fetchEvents} disabled={isFetchingEvents} className="text-[9px] text-teal-600 font-black uppercase flex items-center gap-1 hover:underline"><RefreshCw size={10} className={isFetchingEvents ? 'animate-spin' : ''} /> {t.sync}</button></div>
           <input type="password" value={settings.calendlyToken} onChange={(e) => handleChange('calendlyToken', e.target.value)} className="w-full p-3 text-sm font-bold bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Calendly Personal Access Token" />
+
+          {/* Available Events List */}
+          {settings.eventTypes.length > 0 && (
+            <div className="space-y-2 mt-2">
+              <h4 className="text-[9px] font-black uppercase text-slate-400 ml-1">Available Events (Not yet added)</h4>
+              <div className="space-y-2">
+                {settings.eventTypes.filter(et => !settings.services.some(s => s.calendlyEventTypeUri === et.uri)).length === 0 && (
+                  <p className="text-[10px] text-slate-400 italic ml-1">All synced events have been added.</p>
+                )}
+                {settings.eventTypes.filter(et => !settings.services.some(s => s.calendlyEventTypeUri === et.uri)).map(et => (
+                  <div key={et.uri} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl hover:border-teal-200 transition-colors group">
+                    <div>
+                      <div className="text-xs font-bold text-slate-700">{et.title}</div>
+                      <div className="text-[9px] font-bold text-slate-400">{et.duration} min</div>
+                    </div>
+                    <button onClick={() => addService(et)} className="p-1.5 bg-slate-50 hover:bg-teal-50 text-slate-400 hover:text-teal-600 rounded-lg transition-colors">
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="space-y-4">
@@ -117,7 +158,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
               <div key={s.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3 shadow-sm">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                   <div className="flex items-center gap-2 text-[9px] font-black text-teal-600 uppercase"><Link2 size={10} /> {settings.eventTypes.find(e => e.uri === s.calendlyEventTypeUri)?.title || 'Event'}</div>
-                  <button onClick={() => removeService(s.id, s.calendlyEventTypeUri)} className="text-rose-400 p-1"><Trash2 size={12} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); removeService(s.id, s.calendlyEventTypeUri); }} className="text-rose-400 p-2 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
                 </div>
                 <input value={s.name} onChange={(e) => updateService(s.id, 'name', e.target.value)} className="w-full bg-white border border-slate-100 p-2 rounded-lg text-xs font-bold outline-none" placeholder="Service Name" />
                 <div className="flex gap-2">
