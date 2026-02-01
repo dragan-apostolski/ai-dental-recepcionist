@@ -266,7 +266,7 @@ export const bookAppointment = async (
                 event_type: eventTypeUri,
                 start_time: bookingData.start,
                 invitee: {
-                    display_name: bookingData.name, // "display_name" or just "name"? Search said "name" or "first_name". Calendly API v2 uses "name" usually.
+                    name: bookingData.name, // Changed from display_name to name per API docs
                     email: bookingData.email,
                     time_zone: 'Europe/Skopje'
                 },
@@ -277,7 +277,26 @@ export const bookAppointment = async (
             })
         });
 
-        const data = await handleResponse(res, 'bookAppointment');
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error(`Calendly Booking Error (${res.status}): ${errorText}`);
+
+            if (res.status === 403) {
+                return { success: false, error: 'Booking failed: Account requires a paid Calendly plan for API bookings.' };
+            }
+            if (res.status === 404) {
+                return { success: false, error: 'Booking failed: Invalid event type or configuration.' };
+            }
+
+            try {
+                const json = JSON.parse(errorText);
+                return { success: false, error: json.message || `HTTP ${res.status}` };
+            } catch (e) {
+                return { success: false, error: `HTTP ${res.status}: ${errorText}` };
+            }
+        }
+
+        const data = await res.json();
         return { success: true, details: data };
 
     } catch (error: any) {
