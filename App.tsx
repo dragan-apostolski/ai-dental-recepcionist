@@ -264,6 +264,11 @@ const App: React.FC = () => {
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(audioContextInRef.current!.destination);
+
+            // Force the model to speak first
+            setTimeout(() => {
+              sessionPromise.then(s => s.sendRealtimeInput({ text: "Hello. The user is on the line. Greet them based on the time of day." }));
+            }, 100);
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.serverContent?.interrupted) {
