@@ -153,7 +153,7 @@ const App: React.FC = () => {
           date: { type: Type.STRING, description: 'Date (YYYY-MM-DD)' },
           time: { type: Type.STRING, description: 'Time (e.g. 14:00)' },
           name: { type: Type.STRING, description: 'User name' },
-          email: { type: Type.STRING, description: 'User email' }
+          email: { type: Type.STRING, description: 'User email in latin characters. It always must be in a valid email address format.' }
         },
         required: ['service', 'date', 'time', 'name', 'email']
       }
