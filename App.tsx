@@ -110,14 +110,17 @@ const App: React.FC = () => {
   useEffect(() => {
     const { data: { subscription } } = auth.onAuthStateChange((newUser) => {
       setUser(newUser);
-      setIsAuthLoading(false);
       if (newUser) {
         loadSettings().then((saved) => {
           if (saved) {
             setSettings(prev => ({ ...prev, ...saved }));
             if (saved.onboarded) refreshSchedule(saved);
           }
+        }).finally(() => {
+          setIsAuthLoading(false);
         });
+      } else {
+        setIsAuthLoading(false);
       }
     });
     return () => subscription.unsubscribe();

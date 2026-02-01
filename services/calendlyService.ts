@@ -268,7 +268,7 @@ export const bookAppointment = async (
                 invitee: {
                     name: bookingData.name, // Changed from display_name to name per API docs
                     email: bookingData.email,
-                    time_zone: 'Europe/Skopje'
+                    timezone: 'Europe/Skopje'
                 },
                 location: {
                     kind: 'physical',
