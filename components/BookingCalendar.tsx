@@ -13,7 +13,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
   const [selectedDayIndex, setSelectedDayIndex] = React.useState(0);
   const t = translations[uiLanguage];
   const locale = uiLanguage === 'mk' ? 'mk-MK' : uiLanguage === 'sl' ? 'sl-SI' : 'en-US';
-  
+
   React.useEffect(() => {
     if (selectedDayIndex >= schedule.length && schedule.length > 0) {
       setSelectedDayIndex(0);
@@ -27,6 +27,14 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
     const startHour = 8;
     const endHour = 18;
 
+    const now = new Date();
+    // Parse YYYY-MM-DD as local date components to avoid UTC offset issues
+    // currentDay.date is YYYY-MM-DD
+    const [y, m, d] = currentDay.date.split('-').map(Number);
+    const dayDate = new Date(y, m - 1, d);
+    const isToday = dayDate.toDateString() === now.toDateString();
+    const currentHour = now.getHours();
+
     for (let h = startHour; h <= endHour; h++) {
       const hourLabel = h.toString().padStart(2, '0') + ':00';
       const slotsInHour = slots.filter(s => {
@@ -36,10 +44,11 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
 
       const bookedInHour = slotsInHour.filter(s => !s.available && s.bookedBy);
       const availableInHour = slotsInHour.filter(s => s.available);
+      const isPastHour = isToday && h < currentHour;
 
       if (bookedInHour.length > 0) {
         bookedInHour.forEach(b => blocks.push(b));
-      } else if (availableInHour.length > 0) {
+      } else if (availableInHour.length > 0 && !isPastHour) {
         blocks.push({
           time: hourLabel,
           isoTime: availableInHour[0].isoTime,
@@ -63,7 +72,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
           <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 opacity-70">{t.calendarSub}</p>
         </div>
         <div className="bg-teal-500/20 p-3 rounded-2xl relative z-10">
-            <CalendarIcon size={24} className="text-teal-500" />
+          <CalendarIcon size={24} className="text-teal-500" />
         </div>
       </div>
 
@@ -77,11 +86,10 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                 <button
                   key={day.date}
                   onClick={() => setSelectedDayIndex(idx)}
-                  className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${
-                    isSelected 
-                      ? 'bg-teal-600 text-white shadow-xl shadow-teal-100 ring-2 ring-teal-600/20' 
-                      : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-100 hover:border-slate-200'
-                  }`}
+                  className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${isSelected
+                    ? 'bg-teal-600 text-white shadow-xl shadow-teal-100 ring-2 ring-teal-600/20'
+                    : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-100 hover:border-slate-200'
+                    }`}
                 >
                   <span className={`text-[9px] uppercase font-black ${isSelected ? 'opacity-70' : 'opacity-40'}`}>
                     {dateObj.toLocaleDateString(locale, { weekday: 'short' })}
@@ -116,17 +124,16 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
               {displaySlots.map((slot, index) => {
                 const isBooked = !!slot.bookedBy;
                 const isAvailable = slot.available;
-                
+
                 return (
-                  <div 
+                  <div
                     key={`${currentDay.date}-${slot.time}-${index}`}
-                    className={`flex items-center px-8 py-6 transition-all duration-300 ${
-                        isAvailable 
-                            ? 'bg-teal-50/40 hover:bg-teal-50/80 border-l-4 border-l-teal-500' 
-                            : isBooked 
-                                ? 'bg-slate-50/50 grayscale-[0.5]' 
-                                : 'bg-white opacity-50'
-                    }`}
+                    className={`flex items-center px-8 py-6 transition-all duration-300 ${isAvailable
+                      ? 'bg-teal-50/40 hover:bg-teal-50/80 border-l-4 border-l-teal-500'
+                      : isBooked
+                        ? 'bg-slate-50/50 grayscale-[0.5]'
+                        : 'bg-white opacity-50'
+                      }`}
                   >
                     <div className="w-20 shrink-0">
                       <span className={`text-base font-black tracking-tight ${isBooked ? 'text-slate-400' : 'text-slate-900'}`}>
@@ -139,11 +146,11 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                         {isBooked ? (
                           <div className="flex flex-col gap-0.5">
                             <span className="text-sm font-black text-slate-800 flex items-center gap-2">
-                                <Lock size={12} className="text-amber-500" />
-                                {slot.bookedBy}
+                              <Lock size={12} className="text-amber-500" />
+                              {slot.bookedBy}
                             </span>
                             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                {slot.serviceTitle}
+                              {slot.serviceTitle}
                             </span>
                           </div>
                         ) : (
@@ -154,8 +161,8 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                       </div>
                       {isAvailable && (
                         <div className="bg-white text-teal-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 border border-teal-100 shadow-sm">
-                            <CheckCircle2 size={12} className="text-teal-500" /> 
-                            {t.open}
+                          <CheckCircle2 size={12} className="text-teal-500" />
+                          {t.open}
                         </div>
                       )}
                     </div>
