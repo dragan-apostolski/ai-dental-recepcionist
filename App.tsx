@@ -231,17 +231,13 @@ const App: React.FC = () => {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: settings.voiceName } }
           },
-          temperature: 0.1,
+          temperature: 0.7,
           systemInstruction: getSystemInstruction(settings, currentDateTimeStr),
           tools: [{ functionDeclarations: tools }],
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              silenceDurationMs: 500,
-            }
-          }
         },
         callbacks: {
           onopen: () => {
+            // ... existing onopen logic ...
             setIsCalling(true);
             addLog("Voice session active. Agent ready.");
             const source = audioContextInRef.current!.createMediaStreamSource(stream);
@@ -252,15 +248,11 @@ const App: React.FC = () => {
               for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
               const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
               sessionPromise.then(s => {
-                if (!isMutedRef.current && pendingEndCallRef.current === false) {
-                  // Just fire and forget. The helper handles buffering?
-                  // No, we must check if session is open??
-                  // The error is "WebSocket is already in CLOSING or CLOSED state."
-                  // This happens inside s.sendRealtimeInput
+                if (!isMutedRef.current && pendingEndCallRef.current === false && sessionRef.current) {
                   try {
                     s.sendRealtimeInput({ media: pcmBlob });
                   } catch (err) {
-                    // Ignore send errors if session closed mid-frame
+                    // Ignore send errors
                   }
                 }
               });
@@ -270,10 +262,11 @@ const App: React.FC = () => {
 
             // Force the model to speak first
             setTimeout(() => {
-              sessionPromise.then(s => s.sendRealtimeInput({ text: "Hello. The user is on the line. Greet them based on the time of day." }));
+              sessionPromise.then(s => s.sendRealtimeInput({ text: "Hello. The user is on the line. Start the conversation with your standard greeting." }));
             }, 100);
           },
           onmessage: async (msg: LiveServerMessage) => {
+            // ... existing onmessage logic ...
             if (msg.serverContent?.interrupted) {
               for (const source of sourcesRef.current.values()) { source.stop(); sourcesRef.current.delete(source); }
               nextStartTimeRef.current = 0;
@@ -393,11 +386,14 @@ const App: React.FC = () => {
           },
           onerror: (e) => {
             addLog(`Session Error: ${e.message}`, 'error');
-            setIsCalling(false);
+            cleanupAudio();
           },
-          onclose: () => {
-            setIsCalling(false);
-            addLog("Session closed.");
+          onclose: (e: any) => {
+            // Log detailed closure info to help debugging
+            const reason = e?.reason || 'No reason provided';
+            const code = e?.code || 'No code';
+            addLog(`Session closed. Code: ${code}, Reason: ${reason}`);
+            cleanupAudio();
           }
         }
       });
@@ -407,13 +403,39 @@ const App: React.FC = () => {
     }
   };
 
-  const endCall = useCallback(() => {
-    sessionRef.current?.close();
-    audioContextInRef.current?.close();
-    audioContextOutRef.current?.close();
+  const cleanupAudio = useCallback(() => {
+    if (audioContextInRef.current) {
+      try {
+        audioContextInRef.current.close();
+      } catch (e) { console.error("Error closing audio in", e); }
+      audioContextInRef.current = null;
+    }
+    if (audioContextOutRef.current) {
+      try {
+        audioContextOutRef.current.close();
+      } catch (e) { console.error("Error closing audio out", e); }
+      audioContextOutRef.current = null;
+    }
+    if (sessionRef.current) {
+      // We avoid calling close() here if it was triggered by onclose to avoid loops/errors, 
+      // but sessionRef.current.close() is generally safe (idempotent-ish).
+      // However, we primarily want to stop new sends.
+      sessionRef.current = null;
+    }
     setIsCalling(false);
     setIsModelSpeaking(false);
+    // Stop all source nodes
+    for (const source of sourcesRef.current.values()) {
+      try { source.stop(); } catch (e) { }
+    }
+    sourcesRef.current.clear();
   }, []);
+
+  const endCall = useCallback(() => {
+    pendingEndCallRef.current = true; // Mark as pending end to stop logic
+    sessionRef.current?.close(); // Initiate close
+    cleanupAudio(); // Force local cleanup immediately
+  }, [cleanupAudio]);
 
   const handleSaveSettings = (newSettings: Settings) => {
     setSettings(newSettings);
