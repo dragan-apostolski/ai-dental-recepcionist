@@ -1,11 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, FunctionDeclaration, Type } from '@google/genai';
-import { Settings, DayAvailability, CalendlyEvent, WorkingHour, Service } from './types';
-import { GEMINI_MODEL } from './constants';
-import { getSystemInstruction } from './prompts';
+import { Settings, DayAvailability, WorkingHour } from './types';
 import { translations } from './i18n';
-import { checkAvailability, bookAppointment, fetchAvailabilityRange } from './services/calendlyService';
 import { loadSettings, saveSettings, auth } from './services/storageService';
 import PhoneInterface from './components/PhoneInterface';
 import BookingCalendar from './components/BookingCalendar';
@@ -103,7 +98,7 @@ const App: React.FC = () => {
   const audioContextInRef = useRef<AudioContext | null>(null);
   const audioContextOutRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef(0);
-  const sessionRef = useRef<any>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const pendingEndCallRef = useRef(false);
 
@@ -130,72 +125,41 @@ const App: React.FC = () => {
     setLogs(prev => [{ msg, type, timestamp: Date.now() }, ...prev].slice(0, 50));
   };
 
-  const tools: FunctionDeclaration[] = [
-    {
-      name: 'checkAvailability',
-      parameters: {
-        type: Type.OBJECT,
-        description: 'Check available slots for a given date.',
-        properties: {
-          date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format' },
-          serviceName: { type: Type.STRING, description: 'Name of the service' }
-        },
-        required: ['date', 'serviceName']
-      }
-    },
-    {
-      name: 'bookAppointment',
-      parameters: {
-        type: Type.OBJECT,
-        description: 'Book an appointment in Cal.com database.',
-        properties: {
-          service: { type: Type.STRING, description: 'Service name' },
-          date: { type: Type.STRING, description: 'Date (YYYY-MM-DD)' },
-          time: { type: Type.STRING, description: 'Time (e.g. 14:00)' },
-          name: { type: Type.STRING, description: 'User name' },
-          email: { type: Type.STRING, description: 'User email in latin characters. It always must be in a valid email address format.' }
-        },
-        required: ['service', 'date', 'time', 'name', 'email']
-      }
-    },
-    {
-      name: 'endCall',
-      parameters: { type: Type.OBJECT, description: 'End the phone call session.' }
-    }
-  ];
-
   const refreshSchedule = async (config: Settings) => {
-    if (!config.calendlyToken || !config.selectedEventTypeIds?.length) return;
+    if (!config.calendlyToken) {
+      setSchedule([]);
+      return;
+    }
+
     setIsRefreshing(true);
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(startDate.getDate() + 14);
-
     try {
-      const results = await Promise.all(
-        config.selectedEventTypeIds.map(uri =>
-          fetchAvailabilityRange(config.calendlyToken, uri, startDate.toISOString(), endDate.toISOString(), config.workingHours)
-        )
-      );
+      // Use configured backend port (ngrok or localhost:8080)
+      const protocol = window.location.protocol;
+      const host = window.location.hostname;
+      // If localhost, use 8080. If ngrok/other, use default port (no suffix).
+      const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+      const apiUrl = `${protocol}//${host}${port}/api/schedule`;
 
-      const daysMap: Record<string, Set<string>> = {};
-      results.forEach(eventAvailabilities => {
-        eventAvailabilities.forEach(day => {
-          if (!daysMap[day.date]) daysMap[day.date] = new Set();
-          day.slots.forEach(s => daysMap[day.date].add(JSON.stringify(s)));
-        });
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          token: config.calendlyToken,
+          eventTypeIds: config.selectedEventTypeIds,
+          workingHours: config.workingHours
+        })
       });
 
-      const finalSchedule: DayAvailability[] = Object.entries(daysMap)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([date, slotsSet]) => ({
-          date,
-          slots: Array.from(slotsSet).map(s => JSON.parse(s)).sort((a, b) => a.time.localeCompare(b.time))
-        }));
-
-      setSchedule(finalSchedule);
-    } catch (err: any) {
-      addLog(`Sync failed: ${err.message}`, 'error');
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data.schedule || []);
+      } else {
+        console.error("Failed to fetch schedule");
+      }
+    } catch (e) {
+      console.error("Error refreshing schedule:", e);
     } finally {
       setIsRefreshing(false);
     }
@@ -207,10 +171,9 @@ const App: React.FC = () => {
       return;
     }
     pendingEndCallRef.current = false;
-    addLog("Initializing secure voice session...");
+    addLog("Connecting to server...");
 
     try {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       audioContextInRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       audioContextOutRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
@@ -218,186 +181,94 @@ const App: React.FC = () => {
       await audioContextOutRef.current.resume();
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const now = new Date();
-      const locale = settings.language === 'mk' ? 'mk-MK' : settings.language === 'sl' ? 'sl-SI' : 'en-US';
-      const currentDateTimeStr = now.toLocaleDateString(locale, {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
 
-      const sessionPromise = ai.live.connect({
-        model: GEMINI_MODEL,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: settings.voiceName } }
-          },
-          temperature: 0.7,
-          systemInstruction: getSystemInstruction(settings, currentDateTimeStr),
-          tools: [{ functionDeclarations: tools }],
-        },
-        callbacks: {
-          onopen: () => {
-            // ... existing onopen logic ...
-            setIsCalling(true);
-            addLog("Voice session active. Agent ready.");
-            const source = audioContextInRef.current!.createMediaStreamSource(stream);
-            const scriptProcessor = audioContextInRef.current!.createScriptProcessor(1024, 1, 1);
-            scriptProcessor.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-              const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-              sessionPromise.then(s => {
-                if (!isMutedRef.current && pendingEndCallRef.current === false && sessionRef.current) {
-                  try {
-                    s.sendRealtimeInput({ media: pcmBlob });
-                  } catch (err) {
-                    // Ignore send errors
-                  }
-                }
-              });
-            };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(audioContextInRef.current!.destination);
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsHost = window.location.hostname;
+      // If localhost, use 8080. If ngrok/other, use default port (no suffix).
+      const wsPort = (wsHost === 'localhost' || wsHost === '127.0.0.1') ? ':8080' : '';
+      const wsUrl = `${wsProtocol}://${wsHost}${wsPort}/client-stream`;
 
-            // Force the model to speak first
-            setTimeout(() => {
-              sessionPromise.then(s => s.sendRealtimeInput({ text: "Hello. The user is on the line. Start the conversation with your standard greeting." }));
-            }, 100);
-          },
-          onmessage: async (msg: LiveServerMessage) => {
-            // ... existing onmessage logic ...
-            if (msg.serverContent?.interrupted) {
-              for (const source of sourcesRef.current.values()) { source.stop(); sourcesRef.current.delete(source); }
-              nextStartTimeRef.current = 0;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("WS Connected");
+        ws.send(JSON.stringify({ type: 'setup', settings }));
+
+        setIsCalling(true);
+        addLog("Voice session active. Agent ready.");
+
+        const source = audioContextInRef.current!.createMediaStreamSource(stream);
+        const scriptProcessor = audioContextInRef.current!.createScriptProcessor(1024, 1, 1);
+        scriptProcessor.onaudioprocess = (e) => {
+          const inputData = e.inputBuffer.getChannelData(0);
+          const int16 = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+          const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
+
+          if (ws.readyState === WebSocket.OPEN && !isMutedRef.current && pendingEndCallRef.current === false) {
+            ws.send(JSON.stringify({ realtimeInput: { media: pcmBlob } }));
+          }
+        };
+        source.connect(scriptProcessor);
+        scriptProcessor.connect(audioContextInRef.current!.destination);
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'log') {
+          addLog(msg.message, msg.level || 'info');
+          return;
+        }
+        if (msg.type === 'event' && msg.name === 'refresh_schedule') {
+          refreshSchedule(settings);
+          return;
+        }
+
+        if (msg.serverContent?.interrupted) {
+          for (const source of sourcesRef.current.values()) { source.stop(); sourcesRef.current.delete(source); }
+          nextStartTimeRef.current = 0;
+          setIsModelSpeaking(false);
+          addLog("Audio stream interrupted.");
+        }
+
+        const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+        if (audioData) {
+          setIsModelSpeaking(true);
+          const outCtx = audioContextOutRef.current!;
+          nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
+          const buffer = await decodeAudioData(decode(audioData), outCtx, 24000, 1);
+          const source = outCtx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(outCtx.destination);
+          source.onended = () => {
+            sourcesRef.current.delete(source);
+            if (sourcesRef.current.size === 0) {
               setIsModelSpeaking(false);
-              addLog("Audio stream interrupted.");
-            }
-            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              setIsModelSpeaking(true);
-              const outCtx = audioContextOutRef.current!;
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
-              const buffer = await decodeAudioData(decode(audioData), outCtx, 24000, 1);
-              const source = outCtx.createBufferSource();
-              source.buffer = buffer;
-              source.connect(outCtx.destination);
-              source.onended = () => {
-                sourcesRef.current.delete(source);
-                if (sourcesRef.current.size === 0) {
-                  setIsModelSpeaking(false);
-                  if (pendingEndCallRef.current) {
-                    addLog("Closing session as requested by AI.");
-                    setTimeout(() => endCall(), 1200);
-                  }
-                }
-              };
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += buffer.duration;
-              sourcesRef.current.add(source);
-            }
-            if (msg.toolCall) {
-              for (const fc of msg.toolCall.functionCalls) {
-                let result: any = "error";
-                if (fc.name === 'checkAvailability') {
-                  const { date, serviceName } = fc.args as any;
-                  addLog(`AI checking availability for "${serviceName}" on ${date}...`);
-
-                  // 1. Try to find in configured services first (Exact or partial match on user-defined name)
-                  const configuredService = settings.services.find(s => s.name.toLowerCase().includes(serviceName.toLowerCase()));
-                  let eventUri = configuredService?.calendlyEventTypeUri;
-
-                  // 2. Fallback to raw event types if not found in services
-                  if (!eventUri) {
-                    const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(serviceName.toLowerCase()));
-                    eventUri = et?.uri;
-                  }
-
-                  if (!eventUri) {
-                    addLog(`Service "${serviceName}" not found.`, "error");
-                    result = "Error: Service not configured.";
-                  } else {
-                    const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
-                    const slots = avail.slots.filter(s => s.available).map(s => s.time);
-                    result = slots.length > 0 ? `Available slots: ${slots.join(', ')}` : "No slots available for this date.";
-                    addLog(`Found ${slots.length} available slots.`);
-                  }
-                } else if (fc.name === 'bookAppointment') {
-                  const { service, date, time, name, email } = fc.args as any;
-                  addLog(`AI processing booking for ${name}...`);
-
-                  // 1. Try to find in configured services first
-                  const configuredService = settings.services.find(s => s.name.toLowerCase().includes(service.toLowerCase()));
-                  let eventUri = configuredService?.calendlyEventTypeUri;
-
-                  // 2. Fallback
-                  if (!eventUri) {
-                    const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(service.toLowerCase()));
-                    eventUri = et?.uri;
-                  }
-
-                  // Default to first selected if absolutely nothing matches (Safety net)
-                  if (!eventUri && settings.selectedEventTypeIds.length > 0) {
-                    eventUri = settings.selectedEventTypeIds[0];
-                  }
-
-                  if (!eventUri) {
-                    result = "Error: Service not found or no event types configured.";
-                    addLog("Booking failed: No matching event type found.", "error");
-                  } else {
-                    const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
-                    const slot = avail.slots.find(s => s.time === time);
-
-                    // Find the full event object to get location config
-                    const eventType = settings.eventTypes.find(et => et.uri === eventUri);
-                    let locationConfig = undefined;
-
-                    if (eventType?.locations && eventType.locations.length > 0) {
-                      // Prefer physical location or take the first one available
-                      const loc = eventType.locations.find((l: any) => l.kind === 'physical') || eventType.locations[0];
-                      if (loc) {
-                        locationConfig = { kind: loc.kind, location: loc.location };
-                      }
-                    }
-
-                    const bookResult = await bookAppointment(settings.calendlyToken, eventUri, {
-                      start: slot?.isoTime || `${date}T${time}:00Z`, name, email
-                    }, locationConfig);
-
-                    if (bookResult.success) {
-                      result = "Booking successful.";
-                      addLog(`Booking confirmed for ${name} at ${time}.`);
-                      refreshSchedule(settings);
-                    }
-                    else {
-                      result = `Error: ${bookResult.error}`;
-                      addLog(`Booking failed: ${bookResult.error}`, "error");
-                    }
-                  }
-                } else if (fc.name === 'endCall') {
-                  addLog('AI initiated call termination.');
-                  pendingEndCallRef.current = true;
-                  if (sourcesRef.current.size === 0) endCall();
-                  result = "ok";
-                }
-                sessionPromise.then(s => s.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result } } }));
+              if (pendingEndCallRef.current) {
+                addLog("Closing session as requested by AI.");
+                setTimeout(() => endCall(), 1200);
               }
             }
-          },
-          onerror: (e) => {
-            addLog(`Session Error: ${e.message}`, 'error');
-            cleanupAudio();
-          },
-          onclose: (e: any) => {
-            // Log detailed closure info to help debugging
-            const reason = e?.reason || 'No reason provided';
-            const code = e?.code || 'No code';
-            addLog(`Session closed. Code: ${code}, Reason: ${reason}`);
-            cleanupAudio();
-          }
+          };
+          source.start(nextStartTimeRef.current);
+          nextStartTimeRef.current += buffer.duration;
+          sourcesRef.current.add(source);
         }
-      });
-      sessionRef.current = await sessionPromise;
+      };
+
+      ws.onerror = (e) => {
+        addLog("WebSocket Error", "error");
+        console.error(e);
+        cleanupAudio();
+      };
+
+      ws.onclose = () => {
+        addLog("Disconnected from server");
+        cleanupAudio();
+      }
+
     } catch (e: any) {
       addLog(`Initialization failed: ${e.message}`, 'error');
     }
@@ -416,11 +287,9 @@ const App: React.FC = () => {
       } catch (e) { console.error("Error closing audio out", e); }
       audioContextOutRef.current = null;
     }
-    if (sessionRef.current) {
-      // We avoid calling close() here if it was triggered by onclose to avoid loops/errors, 
-      // but sessionRef.current.close() is generally safe (idempotent-ish).
-      // However, we primarily want to stop new sends.
-      sessionRef.current = null;
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
     }
     setIsCalling(false);
     setIsModelSpeaking(false);
@@ -433,8 +302,9 @@ const App: React.FC = () => {
 
   const endCall = useCallback(() => {
     pendingEndCallRef.current = true; // Mark as pending end to stop logic
-    sessionRef.current?.close(); // Initiate close
-    cleanupAudio(); // Force local cleanup immediately
+    // wsRef.current?.close(); // Initiate close 
+    // Wait for ongoing audio to finish? Logic says close immediately.
+    cleanupAudio();
   }, [cleanupAudio]);
 
   const handleSaveSettings = (newSettings: Settings) => {
@@ -460,15 +330,15 @@ const App: React.FC = () => {
       <header className="h-16 bg-white border-b border-slate-100 px-6 flex justify-between items-center z-50">
         <div className="flex items-center gap-3">
           <div className="bg-slate-900 p-2 rounded-xl text-white shadow-lg transform -rotate-3"><LayoutDashboard size={20} /></div>
-          <div><h1 className="text-lg font-black text-slate-900 tracking-tight italic uppercase">{t.appTitle}</h1><p className="text-[9px] font-bold text-teal-600 uppercase tracking-widest leading-none">{t.subtitle}</p></div>
+          <div><h1 className="text-lg font-bold text-slate-900 tracking-tight italic uppercase">{t.appTitle}</h1><p className="text-[9px] font-bold text-teal-600 uppercase tracking-widest leading-none">{t.subtitle}</p></div>
         </div>
         <div className="flex items-center gap-4">
           {isRefreshing && <div className="text-slate-400 text-[10px] font-bold animate-pulse flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {t.syncing}</div>}
           <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-xl transition-all border border-slate-100"><SettingsIcon size={20} /></button>
           <div className="h-8 w-px bg-slate-100 mx-1" />
           <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end leading-tight"><span className="text-xs font-black text-slate-700">{user.email?.split('@')[0]}</span><button onClick={() => auth.signOut()} className="text-[9px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 flex items-center gap-1 transition-colors"><LogOut size={10} /> {t.logout}</button></div>
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white flex items-center justify-center text-sm font-black shadow-xl ring-2 ring-white">{user.email?.[0].toUpperCase()}</div>
+            <div className="flex flex-col items-end leading-tight"><span className="text-xs font-bold text-slate-700">{user.email?.split('@')[0]}</span><button onClick={() => auth.signOut()} className="text-[9px] font-bold uppercase tracking-widest text-rose-500 hover:text-rose-600 flex items-center gap-1 transition-colors"><LogOut size={10} /> {t.logout}</button></div>
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white flex items-center justify-center text-sm font-bold shadow-xl ring-2 ring-white">{user.email?.[0].toUpperCase()}</div>
           </div>
         </div>
       </header>
@@ -486,7 +356,7 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
-      <footer className="h-10 bg-white border-t border-slate-100 px-6 flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+      <footer className="h-10 bg-white border-t border-slate-100 px-6 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-teal-600" /><span>Secure AI Protocol</span></div>
           <div className="flex items-center gap-2">

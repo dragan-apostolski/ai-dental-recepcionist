@@ -68,7 +68,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
       <div className="p-8 bg-slate-900 text-white flex justify-between items-center relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 blur-[60px] rounded-full -mr-16 -mt-16" />
         <div className="relative z-10">
-          <h2 className="text-2xl font-black tracking-tight uppercase italic">{t.workingHours}</h2>
+          <h2 className="text-2xl font-bold tracking-tight uppercase italic">{t.workingHours}</h2>
           <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 opacity-70">{t.calendarSub}</p>
         </div>
         <div className="bg-teal-500/20 p-3 rounded-2xl relative z-10">
@@ -91,13 +91,13 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                     : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-100 hover:border-slate-200'
                     }`}
                 >
-                  <span className={`text-[9px] uppercase font-black ${isSelected ? 'opacity-70' : 'opacity-40'}`}>
+                  <span className={`text-[9px] uppercase font-bold ${isSelected ? 'opacity-70' : 'opacity-40'}`}>
                     {dateObj.toLocaleDateString(locale, { weekday: 'short' })}
                   </span>
-                  <span className="text-xl font-black my-0.5">
+                  <span className="text-xl font-bold my-0.5">
                     {dateObj.getDate()}
                   </span>
-                  <span className={`text-[9px] uppercase font-black ${isSelected ? 'opacity-70' : 'opacity-40'}`}>
+                  <span className={`text-[9px] uppercase font-bold ${isSelected ? 'opacity-70' : 'opacity-40'}`}>
                     {dateObj.toLocaleDateString(locale, { month: 'short' })}
                   </span>
                 </button>
@@ -110,15 +110,16 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
           {schedule.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-4 p-12 text-center">
               <div className="bg-slate-50 p-6 rounded-full">
-                <Clock size={48} className="opacity-20 animate-pulse" />
+                <CheckCircle2 size={48} className="opacity-20" />
               </div>
               <div className="space-y-1">
-                <p className="font-black text-slate-400 uppercase tracking-widest text-xs">{t.syncing}</p>
+                <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Calendar managed by AI</p>
+                <p className="font-bold text-slate-300 uppercase tracking-widest text-[10px] opacity-70">Ask the agent to check availability</p>
               </div>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              <div className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] bg-slate-50/30">
+              <div className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] bg-slate-50/30">
                 {new Date(currentDay.date).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
               </div>
               {displaySlots.map((slot, index) => {
@@ -136,7 +137,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                       }`}
                   >
                     <div className="w-20 shrink-0">
-                      <span className={`text-base font-black tracking-tight ${isBooked ? 'text-slate-400' : 'text-slate-900'}`}>
+                      <span className={`text-base font-bold tracking-tight ${isBooked ? 'text-slate-400' : 'text-slate-900'}`}>
                         {slot.time}
                       </span>
                     </div>
@@ -145,7 +146,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                       <div className="flex-1">
                         {isBooked ? (
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-black text-slate-800 flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
                               <Lock size={12} className="text-amber-500" />
                               {slot.bookedBy}
                             </span>
@@ -154,13 +155,13 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                             </span>
                           </div>
                         ) : (
-                          <span className={`text-sm font-black uppercase tracking-tight ${isAvailable ? 'text-teal-800' : 'text-slate-300 italic'}`}>
+                          <span className={`text-sm font-bold uppercase tracking-tight ${isAvailable ? 'text-teal-800' : 'text-slate-300 italic'}`}>
                             {isAvailable ? t.available : t.unavailable}
                           </span>
                         )}
                       </div>
                       {isAvailable && (
-                        <div className="bg-white text-teal-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 border border-teal-100 shadow-sm">
+                        <div className="bg-white text-teal-700 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase flex items-center gap-2 border border-teal-100 shadow-sm">
                           <CheckCircle2 size={12} className="text-teal-500" />
                           {t.open}
                         </div>

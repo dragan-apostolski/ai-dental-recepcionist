@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.35.0",
+    "@supabase/supabase-js": "^2.39.7",
+    "base64-arraybuffer": "^1.0.2",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
-    "@google/genai": "^1.35.0",
-    "react-dom": "^19.2.3",
-    "@supabase/supabase-js": "^2.39.7"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

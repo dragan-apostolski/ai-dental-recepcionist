@@ -8,7 +8,6 @@ import {
   Clock, MapPin, Phone, CheckCircle2, Languages, User, Users, Info,
   Banknote, Timer, Link2, Copy, Globe
 } from 'lucide-react';
-import { getEventTypes } from '../services/calendlyService';
 import { translations } from '../i18n';
 
 interface OnboardingWizardProps {
@@ -36,10 +35,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
   const prev = () => setStep(s => s - 1);
 
   const fetchEvents = async () => {
-    if (!settings.calendlyToken) return;
-    setIsFetchingEvents(true);
-    const events = await getEventTypes(settings.calendlyToken);
-    update('eventTypes', events);
+    // Event types now managed by backend
     setIsFetchingEvents(false);
   };
 
@@ -131,7 +127,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
       <div className="w-full max-w-3xl relative z-10">
         <div className="text-center mb-6 space-y-2">
           <div className="inline-flex p-3 bg-white text-slate-950 rounded-2xl shadow-xl mb-2 transform -rotate-2"><LayoutDashboard size={24} /></div>
-          <h1 className="text-2xl font-black text-white tracking-tight uppercase italic">{t.setupTitle}</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight uppercase italic">{t.setupTitle}</h1>
           <div className="flex items-center justify-center gap-2">
             {[1, 2, 3, 4, 5].map(i => <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${step >= i ? 'w-8 bg-teal-500' : 'w-4 bg-slate-800'}`} />)}
           </div>
@@ -142,40 +138,40 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
             {step === 1 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="space-y-1">
-                  <h2 className="text-xl font-black text-slate-900 flex items-center gap-3"><Building2 className="text-teal-600" /> {t.clinic}</h2>
+                  <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><Building2 className="text-teal-600" /> {t.clinic}</h2>
                   <p className="text-xs text-slate-500 font-medium tracking-tight">{t.welcomeSub}</p>
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">{t.languageUI}</label>
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">{t.languageUI}</label>
                     <div className="flex gap-2">
                       {['mk', 'en', 'sl'].map(lang => (
-                        <button key={lang} onClick={() => update('uiLanguage', lang)} className={`flex-1 py-3 rounded-xl border font-black text-xs uppercase transition-all ${settings.uiLanguage === lang ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                        <button key={lang} onClick={() => update('uiLanguage', lang)} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.uiLanguage === lang ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
                           {lang === 'mk' ? 'Macedonian' : lang === 'sl' ? 'Slovenian' : 'English'}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">{t.businessName}</label>
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">{t.businessName}</label>
                     <input type="text" value={settings.companyName} onChange={(e) => update('companyName', e.target.value)} className="w-full bg-slate-50 border border-slate-100 focus:border-teal-500 focus:bg-white p-4 rounded-2xl outline-none transition-all text-sm font-bold" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">{t.address}</label><input type="text" value={settings.address} onChange={(e) => update('address', e.target.value)} className="w-full bg-slate-50 border border-slate-100 focus:border-teal-500 focus:bg-white p-4 rounded-2xl outline-none transition-all text-sm font-bold" /></div>
-                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">{t.phone}</label><input type="text" value={settings.phoneNumber} onChange={(e) => update('phoneNumber', e.target.value)} className="w-full bg-slate-50 border border-slate-100 focus:border-teal-500 focus:bg-white p-4 rounded-2xl outline-none transition-all text-sm font-bold" /></div>
+                    <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">{t.address}</label><input type="text" value={settings.address} onChange={(e) => update('address', e.target.value)} className="w-full bg-slate-50 border border-slate-100 focus:border-teal-500 focus:bg-white p-4 rounded-2xl outline-none transition-all text-sm font-bold" /></div>
+                    <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">{t.phone}</label><input type="text" value={settings.phoneNumber} onChange={(e) => update('phoneNumber', e.target.value)} className="w-full bg-slate-50 border border-slate-100 focus:border-teal-500 focus:bg-white p-4 rounded-2xl outline-none transition-all text-sm font-bold" /></div>
                   </div>
                 </div>
               </div>
             )}
             {step === 2 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="space-y-1"><h2 className="text-xl font-black text-slate-900 flex items-center gap-3"><Calendar className="text-teal-600" /> {t.calendar}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.calendarSub}</p></div>
+                <div className="space-y-1"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><Calendar className="text-teal-600" /> {t.calendar}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.calendarSub}</p></div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Calendly Token</label>
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">Calendly Token</label>
                     <div className="flex gap-2">
                       <input type="password" value={settings.calendlyToken} onChange={(e) => update('calendlyToken', e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl outline-none text-sm font-bold" />
-                      <button onClick={fetchEvents} disabled={isFetchingEvents || !settings.calendlyToken} className="bg-slate-900 text-white px-6 rounded-2xl font-black text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50">{isFetchingEvents ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t.sync}</button>
+                      <button onClick={fetchEvents} disabled={isFetchingEvents || !settings.calendlyToken} className="bg-slate-900 text-white px-6 rounded-2xl font-bold text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50">{isFetchingEvents ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t.sync}</button>
                     </div>
                   </div>
                   {settings.eventTypes.length > 0 && <div className="p-4 bg-teal-50 border border-teal-100 rounded-2xl text-xs font-bold text-teal-900 flex items-center gap-2"><CheckCircle2 className="text-teal-600" size={16} /> Found {settings.eventTypes.length} events.</div>}
@@ -184,7 +180,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
             )}
             {step === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="space-y-1"><h2 className="text-xl font-black text-slate-900 flex items-center gap-3"><Sparkles className="text-teal-600" /> {t.services}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.serviceSub}</p></div>
+                <div className="space-y-1"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><Sparkles className="text-teal-600" /> {t.services}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.serviceSub}</p></div>
                 <div className="space-y-4">
                   {settings.services.map((s) => (
                     <div key={s.id} className="p-5 bg-white border border-slate-200 rounded-[2rem] space-y-4 relative shadow-sm">
@@ -197,7 +193,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
                   ))}
                   <div className="grid grid-cols-2 gap-2">
                     {settings.eventTypes.map(et => (
-                      <button key={et.id} disabled={settings.services.some(s => s.calendlyEventTypeUri === et.uri)} onClick={() => addService(et)} className="p-3 rounded-xl border text-[10px] font-black uppercase text-slate-700 hover:border-teal-500 disabled:opacity-30 transition-all">+ {et.title}</button>
+                      <button key={et.id} disabled={settings.services.some(s => s.calendlyEventTypeUri === et.uri)} onClick={() => addService(et)} className="p-3 rounded-xl border text-[10px] font-bold uppercase text-slate-700 hover:border-teal-500 disabled:opacity-30 transition-all">+ {et.title}</button>
                     ))}
                   </div>
                 </div>
@@ -205,17 +201,17 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
             )}
             {step === 4 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="space-y-1"><h2 className="text-xl font-black text-slate-900 flex items-center gap-3"><Clock className="text-teal-600" /> {t.workingHours}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.hoursSub}</p></div>
+                <div className="space-y-1"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><Clock className="text-teal-600" /> {t.workingHours}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.hoursSub}</p></div>
                 <div className="space-y-4">
                   <div className="p-5 bg-teal-50 border border-teal-100 rounded-[2rem] space-y-3">
                     <div className="flex gap-2"><input type="time" id="bulk-open" defaultValue="09:00" className="flex-1 p-2 rounded-xl text-xs font-bold" /><input type="time" id="bulk-close" defaultValue="17:00" className="flex-1 p-2 rounded-xl text-xs font-bold" /></div>
-                    <div className="flex gap-2"><button onClick={() => applyToWeekdays({ day: '', open: (document.getElementById('bulk-open') as any).value, close: (document.getElementById('bulk-close') as any).value, isClosed: false })} className="flex-1 py-2 bg-teal-600 text-white rounded-xl text-[9px] font-black uppercase">{t.applyWeekdays}</button><button onClick={() => applyToAllDays({ day: '', open: (document.getElementById('bulk-open') as any).value, close: (document.getElementById('bulk-close') as any).value, isClosed: false })} className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase">{t.applyAll}</button></div>
+                    <div className="flex gap-2"><button onClick={() => applyToWeekdays({ day: '', open: (document.getElementById('bulk-open') as any).value, close: (document.getElementById('bulk-close') as any).value, isClosed: false })} className="flex-1 py-2 bg-teal-600 text-white rounded-xl text-[9px] font-bold uppercase">{t.applyWeekdays}</button><button onClick={() => applyToAllDays({ day: '', open: (document.getElementById('bulk-open') as any).value, close: (document.getElementById('bulk-close') as any).value, isClosed: false })} className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-bold uppercase">{t.applyAll}</button></div>
                   </div>
                   <div className="space-y-2">
                     {DAYS_ORDER.map(day => {
                       const h = settings.workingHours.find(d => d.day === day)!;
                       return (
-                        <div key={day} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl text-[10px] font-black">
+                        <div key={day} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl text-[10px] font-bold">
                           <span className="w-16 text-slate-600">{day}</span>
                           <div className="flex-1 flex gap-2"><input type="time" disabled={h.isClosed} value={h.open} onChange={(e) => updateHours(day, 'open', e.target.value)} className="flex-1 p-2 rounded-lg" /><input type="time" disabled={h.isClosed} value={h.close} onChange={(e) => updateHours(day, 'close', e.target.value)} className="flex-1 p-2 rounded-lg" /></div>
                           <button onClick={() => updateHours(day, 'isClosed', !h.isClosed)} className={`px-3 py-1.5 rounded-lg min-w-[50px] ${h.isClosed ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-400'}`}>{h.isClosed ? t.off : t.on}</button>
@@ -228,12 +224,12 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
             )}
             {step === 5 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="space-y-1"><h2 className="text-xl font-black text-slate-900 flex items-center gap-3"><UserCircle className="text-teal-600" /> {t.persona}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.personaSub}</p></div>
+                <div className="space-y-1"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><UserCircle className="text-teal-600" /> {t.persona}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.personaSub}</p></div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">{t.agentName}</label><input value={settings.agentName} onChange={(e) => update('agentName', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold" /></div>
+                    <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase text-slate-400 ml-1">{t.agentName}</label><input value={settings.agentName} onChange={(e) => update('agentName', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold" /></div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1">{t.languageAgent}</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">{t.languageAgent}</label>
                       <select value={settings.language} onChange={(e) => update('language', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold outline-none appearance-none">
                         <option value="mk">Macedonian</option><option value="en">English</option><option value="sl">Slovenian</option>
                       </select>
@@ -242,7 +238,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[...MALE_VOICES, ...FEMALE_VOICES].map(v => (
                       <button key={v} onClick={() => update('voiceName', v)} className={`p-4 rounded-2xl border flex items-center justify-between ${settings.voiceName === v ? 'bg-teal-50 border-teal-500' : 'bg-slate-50 border-slate-100'}`}>
-                        <span className="text-xs font-black uppercase">{v}</span>
+                        <span className="text-xs font-bold uppercase">{v}</span>
                         <div onClick={(e) => { e.stopPropagation(); handlePreviewVoice(v); }} className="p-2 bg-white rounded-lg text-teal-600">{isPreviewing === v ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</div>
                       </button>
                     ))}
@@ -252,8 +248,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
             )}
           </div>
           <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-            {step > 1 ? <button onClick={prev} className="flex items-center gap-2 text-slate-500 font-black text-xs uppercase"><ArrowLeft size={16} /> {t.back}</button> : <div />}
-            <button onClick={step === 5 ? () => onFinish(settings) : next} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-3">{step === 5 ? <>{t.finish} <Check size={18} /></> : <>{t.continue} <ArrowRight size={18} /></>}</button>
+            {step > 1 ? <button onClick={prev} className="flex items-center gap-2 text-slate-500 font-bold text-xs uppercase"><ArrowLeft size={16} /> {t.back}</button> : <div />}
+            <button onClick={step === 5 ? () => onFinish(settings) : next} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl flex items-center gap-3">{step === 5 ? <>{t.finish} <Check size={18} /></> : <>{t.continue} <ArrowRight size={18} /></>}</button>
           </div>
         </div>
       </div>

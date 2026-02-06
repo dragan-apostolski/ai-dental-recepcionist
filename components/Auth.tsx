@@ -22,7 +22,7 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
     setError(null);
 
     try {
-      const { data, error: authError } = isLogin 
+      const { data, error: authError } = isLogin
         ? await auth.signIn(email, password)
         : await auth.signUp(email, password);
 
@@ -66,30 +66,30 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
           <div className="inline-flex p-3 bg-slate-900 rounded-2xl shadow-xl text-white mb-4 transform -rotate-3 hover:rotate-0 transition-transform cursor-pointer">
             <LayoutDashboard size={32} />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">ZABOZDRAV</h1>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight italic">ZABOZDRAV</h1>
           <p className="text-slate-500 text-sm font-medium">Вашиот дигитален рецепционер, подготвен за работа.</p>
         </div>
 
         <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 p-8 md:p-10 relative overflow-hidden min-h-[400px] flex flex-col justify-center">
           <div className="absolute top-0 left-0 w-full h-1 bg-teal-600" />
-          
+
           {registrationSuccess ? (
             <div className="text-center space-y-6 animate-in fade-in zoom-in duration-300">
               <div className="w-20 h-20 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <CheckCircle2 size={40} />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900">Профилот е креиран!</h3>
+                <h3 className="text-xl font-bold text-slate-900">Профилот е креиран!</h3>
                 <p className="text-sm text-slate-500 leading-relaxed px-4">
                   Ви испративме линк за верификација на <strong>{email}</strong>. Ве молиме потврдете го вашиот е-маил пред да се најавите.
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setRegistrationSuccess(false);
                   setIsLogin(true);
                 }}
-                className="inline-flex items-center gap-2 text-teal-600 font-black text-xs uppercase tracking-widest hover:gap-3 transition-all"
+                className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs uppercase tracking-widest hover:gap-3 transition-all"
               >
                 <ArrowLeft size={14} /> Назад на најава
               </button>
@@ -109,19 +109,17 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
               )}
 
               <div className="flex bg-slate-100 p-1 rounded-2xl mb-8">
-                <button 
+                <button
                   onClick={() => setIsLogin(true)}
-                  className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${
-                    isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
                 >
                   Најава
                 </button>
-                <button 
+                <button
                   onClick={() => setIsLogin(false)}
-                  className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${
-                    !isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
                 >
                   Регистрација
                 </button>
@@ -133,8 +131,8 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">E-mail Адреса</label>
                     <div className="relative group">
                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-teal-600 transition-colors" size={18} />
-                      <input 
-                        type="email" 
+                      <input
+                        type="email"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -148,8 +146,8 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Лозинка</label>
                     <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-teal-600 transition-colors" size={18} />
-                      <input 
-                        type="password" 
+                      <input
+                        type="password"
                         required
                         minLength={6}
                         value={password}
@@ -168,7 +166,7 @@ const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
                   </div>
                 )}
 
-                <button 
+                <button
                   type="submit"
                   disabled={isLoading || !isConfigured}
                   className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all transform active:scale-[0.98] disabled:opacity-50"
