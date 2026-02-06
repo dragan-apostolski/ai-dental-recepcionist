@@ -81,8 +81,24 @@ export const saveSettings = async (settings: Settings): Promise<void> => {
         });
       if (error) throw error;
     } catch (error) {
-      console.error('Background cloud sync failed:', error);
+      console.error('Background cloud sync failed (Direct):', error);
     }
+  }
+
+  // ALSO sync via Backend API (Reliable Server-Side Update)
+  try {
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+    const apiUrl = `${protocol}//${host}${port}/api/settings`;
+
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+  } catch (e) {
+    console.error('Backend sync failed:', e);
   }
 
   return new Promise((resolve) => {

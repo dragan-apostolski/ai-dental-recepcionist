@@ -146,7 +146,8 @@ export const fetchAvailabilityRange = async (
     eventTypeUri: string,
     startDate: string,
     endDate: string,
-    workingHours?: { day: string, open: string, close: string, isClosed: boolean }[]
+    workingHours?: { day: string, open: string, close: string, isClosed: boolean }[],
+    skipDetails: boolean = false
 ): Promise<DayAvailability[]> => {
     try {
         // 1. Get User URI (needed for busy times) - ideally we cache this or store in settings
@@ -163,15 +164,18 @@ export const fetchAvailabilityRange = async (
         ]);
 
         // 2.1 Enrich Scheduled Events with Invitee Names
-        // This can be N+1, so strictly needed only if we want to show names.
-        // We will fetch invitees for the events found.
-        const detailedEvents = await Promise.all(scheduledEvents.map(async (ev) => {
-            const inviteeName = await getEventInvitees(token, ev.uri);
-            return {
-                ...ev,
-                inviteeName
-            };
-        }));
+        // This is N+1, so we skip it if skipDetails is true (e.g. for simple availability checks)
+        let detailedEvents = scheduledEvents;
+
+        if (!skipDetails) {
+            detailedEvents = await Promise.all(scheduledEvents.map(async (ev) => {
+                const inviteeName = await getEventInvitees(token, ev.uri);
+                return {
+                    ...ev,
+                    inviteeName
+                };
+            }));
+        }
 
         // 3. Generate Slots locally
         const days: DayAvailability[] = [];
@@ -232,7 +236,9 @@ export const fetchAvailabilityRange = async (
                         time: slotStart.toLocaleTimeString('mk-MK', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Skopje' }),
                         isoTime: slotStart.toISOString(),
                         available: false,
-                        bookedBy: matchedEvent ? matchedEvent.inviteeName : 'РЕЗЕРВИРАНО',
+                        bookedBy: matchedEvent
+                            ? ((matchedEvent as any).inviteeName || 'Busy')
+                            : 'Unavailable',
                         serviceTitle: matchedEvent ? matchedEvent.name : undefined
                     });
                 }
@@ -260,7 +266,8 @@ export const checkAvailability = async (
 ): Promise<DayAvailability> => {
     const startTime = `${date}T00:00:00.000Z`;
     const endTime = `${date}T23:59:59.000Z`;
-    const results = await fetchAvailabilityRange(token, eventTypeUri, startTime, endTime, workingHours);
+    // Pass skipDetails=true to speed up the check (we don't need patient names for this)
+    const results = await fetchAvailabilityRange(token, eventTypeUri, startTime, endTime, workingHours, true);
     return results[0] || { date, slots: [] };
 };
 

@@ -125,7 +125,7 @@ const App: React.FC = () => {
     setLogs(prev => [{ msg, type, timestamp: Date.now() }, ...prev].slice(0, 50));
   };
 
-  const refreshSchedule = async (config: Settings) => {
+  const refreshSchedule = async (config: Settings & { days?: number }) => {
     if (!config.calendlyToken) {
       setSchedule([]);
       return;
@@ -148,13 +148,26 @@ const App: React.FC = () => {
         body: JSON.stringify({
           token: config.calendlyToken,
           eventTypeIds: config.selectedEventTypeIds,
-          workingHours: config.workingHours
+          workingHours: config.workingHours,
+          days: config.days // Optional, passed if provided
         })
       });
 
       if (res.ok) {
         const data = await res.json();
-        setSchedule(data.schedule || []);
+        const newSchedule: DayAvailability[] = data.schedule || [];
+
+        // If it's a partial update (days provided), merge. Otherwise replace.
+        if (config.days) {
+          setSchedule(prev => {
+            const map = new Map(prev.map((d: DayAvailability) => [d.date, d]));
+            newSchedule.forEach((d: DayAvailability) => map.set(d.date, d));
+            // Sort by date just in case
+            return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+          });
+        } else {
+          setSchedule(newSchedule);
+        }
       } else {
         console.error("Failed to fetch schedule");
       }
@@ -164,6 +177,62 @@ const App: React.FC = () => {
       setIsRefreshing(false);
     }
   };
+
+  // Poll for schedule updates every 5 seconds (fetch next 7 days only)
+  useEffect(() => {
+    if (!settings.onboarded || !settings.calendlyToken) return;
+
+    const intervalId = setInterval(() => {
+      // Pass a special flag or just call refreshSchedule with 'days' param in a temp settings object
+      // We do not want to trigger 'setIsRefreshing' spinner for background polls necessarily, 
+      // effectively 'silent refresh'.
+      // But reusing refreshSchedule sets isRefreshing=true. 
+      // Let's make a silent version or just tolerate the spinner? 
+      // User asked for "sync", seeing the spinner constantly might be annoying.
+      // Let's copy the fetch logic for silent update.
+
+      const silentUpdate = async () => {
+        try {
+          const protocol = window.location.protocol;
+          const host = window.location.hostname;
+          const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+          const apiUrl = `${protocol}//${host}${port}/api/schedule`;
+
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: settings.calendlyToken,
+              eventTypeIds: settings.selectedEventTypeIds,
+              workingHours: settings.workingHours,
+              days: 7 // Only fetch next 7 days
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const newSchedule: DayAvailability[] = data.schedule || [];
+
+            setSchedule(prev => {
+              // Create a map of existing days
+              const map = new Map(prev.map((d: DayAvailability) => [d.date, d]));
+              // Update with new data
+              newSchedule.forEach(d => map.set(d.date, d));
+              // Convert back to sorted array
+              return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+            });
+          }
+        } catch (e) {
+          // Silent catch
+        }
+      };
+
+      silentUpdate();
+
+    }, 5000); // 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [settings.onboarded, settings.calendlyToken, settings.selectedEventTypeIds, settings.workingHours]);
 
   const startCall = async () => {
     if (!settings.calendlyToken) {

@@ -38,6 +38,7 @@ export const tools: FunctionDeclaration[] = [
 ];
 
 export async function handleToolCall(name: string, args: any, settings: Settings): Promise<any> {
+    console.log(`[PERF] handleToolCall started for ${name}`);
     if (name === 'checkAvailability') {
         const { date, serviceName } = args;
         const services = settings.services || [];
@@ -53,8 +54,28 @@ export async function handleToolCall(name: string, args: any, settings: Settings
             return "Error: Service not configured.";
         }
 
+        // 1. Backend Guardrail: Check for Closed Days
+        const d = new Date(date);
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+        const workingDay = settings.workingHours.find(h => h.day === dayName);
+
+        if (workingDay && workingDay.isClosed) {
+            return `System: The clinic is closed on ${dayName}. Do not offer appointments for this day. Ask the user for another day.`;
+        }
+
         const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
-        const slots = avail.slots.filter(s => s.available).map(s => s.time);
+
+        // 2. Backend Guardrail: Filter Past Slots
+        const now = new Date();
+        const validSlots = avail.slots.filter(s => {
+            if (!s.available) return false;
+            // Strict check: Is the slot time in the past?
+            // s.isoTime is fully qualified ISO string
+            const slotTime = new Date(s.isoTime);
+            return slotTime > now;
+        });
+
+        const slots = validSlots.map(s => s.time);
         return slots.length > 0 ? `Available slots: ${slots.join(', ')}` : "No slots available for this date.";
 
     } else if (name === 'bookAppointment') {

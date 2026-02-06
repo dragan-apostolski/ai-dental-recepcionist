@@ -17,6 +17,7 @@ const port = process.env.PORT || 8080;
 
 app.use(cors());
 import { fetchAvailabilityRange } from './services/calendlyService';
+import { getCompanySettings } from './services/supabaseService';
 
 app.use(express.urlencoded({ extended: true })); // For Twilio webhooks
 app.use(express.json());
@@ -30,16 +31,17 @@ app.get('/health', (req, res) => {
 // For simplicity in this demo, we accept a POST to pass user settings easily.
 app.post('/api/schedule', async (req, res) => {
     try {
-        const { token, eventTypeIds, workingHours } = req.body;
+        const { token, eventTypeIds, workingHours, days } = req.body;
 
         if (!token) {
             res.status(400).json({ error: 'Missing Calendly Token' });
             return;
         }
 
-        // Default range: Today + 90 days
+        // Default range: Today + 90 days, or customized by 'days' param
         const startDate = new Date().toISOString();
-        const endDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+        const durationDays = days ? parseInt(days, 10) : 90;
+        const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
         // Use the first selected event type or just check generic availability if none provided?
         // fetchAvailabilityRange requires an eventTypeUri for some internal logic maybe, but mostly for duration?
@@ -73,6 +75,30 @@ app.post('/api/schedule', async (req, res) => {
         res.json({ schedule });
     } catch (error: any) {
         console.error("Error in /api/schedule:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update Settings Endpoint
+app.post('/api/settings', async (req, res) => {
+    try {
+        const settings = req.body;
+        // Basic validation
+        if (!settings || typeof settings !== 'object') {
+            res.status(400).json({ error: 'Invalid settings data' });
+            return;
+        }
+
+        const { updateCompanySettings } = await import('./services/supabaseService');
+        const success = await updateCompanySettings(settings);
+
+        if (success) {
+            res.json({ status: 'success' });
+        } else {
+            res.status(500).json({ error: 'Failed to update settings in database' });
+        }
+    } catch (error: any) {
+        console.error("Error in /api/settings:", error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -160,7 +186,10 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
                                 ws.send(JSON.stringify({ type: 'log', message: `AI calling tool: ${fc.name}` }));
                             }
 
+                            const startTime = Date.now();
                             const result = await handleToolCall(fc.name, fc.args, settings);
+                            const duration = Date.now() - startTime;
+                            console.log(`[PERF] Tool ${fc.name} execution: ${duration}ms`);
                             console.log(`Tool result: ${result}`);
 
                             if (!isTwilio) {
@@ -241,6 +270,16 @@ wss.on('connection', (ws, req) => {
                     console.log("Twilio Stream Started", data.start.streamSid);
                     streamSid = data.start.streamSid;
                     (ws as any).streamSid = streamSid;
+
+                    // Fetch settings from DB for Twilio calls
+                    const dbSettings = await getCompanySettings();
+                    if (dbSettings) {
+                        console.log("Loaded settings from Supabase for Twilio session");
+                        currentSettings = { ...DEFAULT_SETTINGS, ...dbSettings };
+                    } else {
+                        console.log("Using default settings (Supabase fetch failed or returned null)");
+                    }
+
                     // Connect Gemini Here 
                     geminiSession = await handleGeminiSession(ws, currentSettings, true);
                 } else if (data.event === 'media' && geminiSession) {
