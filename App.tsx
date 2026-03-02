@@ -126,7 +126,8 @@ const App: React.FC = () => {
   };
 
   const refreshSchedule = async (config: Settings & { days?: number }) => {
-    if (!config.calendlyToken) {
+    const activeToken = config.activeCalendarProvider === 'calcom' ? config.calcomToken : config.calendlyToken;
+    if (!activeToken) {
       setSchedule([]);
       return;
     }
@@ -146,7 +147,8 @@ const App: React.FC = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          token: config.calendlyToken,
+          token: config.activeCalendarProvider === 'calcom' ? config.calcomToken : config.calendlyToken,
+          activeCalendarProvider: config.activeCalendarProvider,
           eventTypeIds: config.selectedEventTypeIds,
           workingHours: config.workingHours,
           days: config.days // Optional, passed if provided
@@ -163,7 +165,7 @@ const App: React.FC = () => {
             const map = new Map(prev.map((d: DayAvailability) => [d.date, d]));
             newSchedule.forEach((d: DayAvailability) => map.set(d.date, d));
             // Sort by date just in case
-            return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+            return (Array.from(map.values()) as DayAvailability[]).sort((a, b) => a.date.localeCompare(b.date));
           });
         } else {
           setSchedule(newSchedule);
@@ -180,7 +182,8 @@ const App: React.FC = () => {
 
   // Poll for schedule updates every 5 seconds (fetch next 7 days only)
   useEffect(() => {
-    if (!settings.onboarded || !settings.calendlyToken) return;
+    const activeToken = settings.activeCalendarProvider === 'calcom' ? settings.calcomToken : settings.calendlyToken;
+    if (!settings.onboarded || !activeToken) return;
 
     const intervalId = setInterval(() => {
       // Pass a special flag or just call refreshSchedule with 'days' param in a temp settings object
@@ -202,7 +205,8 @@ const App: React.FC = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              token: settings.calendlyToken,
+              token: settings.activeCalendarProvider === 'calcom' ? settings.calcomToken : settings.calendlyToken,
+              activeCalendarProvider: settings.activeCalendarProvider,
               eventTypeIds: settings.selectedEventTypeIds,
               workingHours: settings.workingHours,
               days: 7 // Only fetch next 7 days
@@ -219,7 +223,7 @@ const App: React.FC = () => {
               // Update with new data
               newSchedule.forEach(d => map.set(d.date, d));
               // Convert back to sorted array
-              return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+              return (Array.from(map.values()) as DayAvailability[]).sort((a, b) => a.date.localeCompare(b.date));
             });
           }
         } catch (e) {
@@ -229,13 +233,14 @@ const App: React.FC = () => {
 
       silentUpdate();
 
-    }, 5000); // 5 seconds
+    }, 60000); // 60 seconds
 
     return () => clearInterval(intervalId);
-  }, [settings.onboarded, settings.calendlyToken, settings.selectedEventTypeIds, settings.workingHours]);
+  }, [settings.onboarded, settings.calendlyToken, settings.calcomToken, settings.activeCalendarProvider, settings.selectedEventTypeIds, settings.workingHours]);
 
   const startCall = async () => {
-    if (!settings.calendlyToken) {
+    const activeToken = settings.activeCalendarProvider === 'calcom' ? settings.calcomToken : settings.calendlyToken;
+    if (!activeToken) {
       addLog("Missing API Key. Please check settings.", "error");
       return;
     }

@@ -24,6 +24,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [isFetchingEvents, setIsFetchingEvents] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState<string | null>(null);
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<'calendly' | 'calcom' | null>(null);
 
   const t = translations[settings.uiLanguage];
 
@@ -31,12 +32,57 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleProviderSwitch = (provider: 'calendly' | 'calcom') => {
+    if (settings.activeCalendarProvider === provider) return;
+
+    if (settings.eventTypes.length > 0 || settings.services.some(s => s.calendlyEventTypeUri)) {
+      setPendingProviderSwitch(provider);
+      return;
+    }
+
+    executeProviderSwitch(provider);
+  };
+
+  const executeProviderSwitch = (provider: 'calendly' | 'calcom') => {
+    setSettings(prev => ({
+      ...prev,
+      activeCalendarProvider: provider,
+      eventTypes: [],
+      selectedEventTypeIds: [],
+      services: prev.services.map(s => ({ ...s, calendlyEventTypeUri: '' }))
+    }));
+    setPendingProviderSwitch(null);
+  };
+
   const next = () => setStep(s => s + 1);
   const prev = () => setStep(s => s - 1);
 
   const fetchEvents = async () => {
-    // Event types now managed by backend
-    setIsFetchingEvents(false);
+    setIsFetchingEvents(true);
+    try {
+      const protocol = window.location.protocol;
+      const host = window.location.hostname;
+      const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+      const apiUrl = `${protocol}//${host}${port}/api/event-types`;
+
+      const token = settings.activeCalendarProvider === 'calcom' ? settings.calcomToken : settings.calendlyToken;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, activeCalendarProvider: settings.activeCalendarProvider })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(prev => ({ ...prev, eventTypes: data.eventTypes || [] }));
+      } else {
+        console.error('Failed to fetch event types');
+      }
+    } catch (e) {
+      console.error('Error fetching event types:', e);
+    } finally {
+      setIsFetchingEvents(false);
+    }
   };
 
   const addService = (calEvent: CalendlyEvent) => {
@@ -168,10 +214,21 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
                 <div className="space-y-1"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-3"><Calendar className="text-teal-600" /> {t.calendar}</h2><p className="text-xs text-slate-500 font-medium tracking-tight">{t.calendarSub}</p></div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">Calendly Token</label>
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">Calendar Provider</label>
                     <div className="flex gap-2">
-                      <input type="password" value={settings.calendlyToken} onChange={(e) => update('calendlyToken', e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl outline-none text-sm font-bold" />
-                      <button onClick={fetchEvents} disabled={isFetchingEvents || !settings.calendlyToken} className="bg-slate-900 text-white px-6 rounded-2xl font-bold text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50">{isFetchingEvents ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t.sync}</button>
+                      <button onClick={() => handleProviderSwitch('calendly')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.activeCalendarProvider !== 'calcom' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>Calendly</button>
+                      <button onClick={() => handleProviderSwitch('calcom')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.activeCalendarProvider === 'calcom' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>Cal.com</button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-1">{settings.activeCalendarProvider === 'calcom' ? 'Cal.com API Key' : 'Calendly Token'}</label>
+                    <div className="flex gap-2">
+                      {settings.activeCalendarProvider === 'calcom' ? (
+                        <input type="password" value={settings.calcomToken || ''} onChange={(e) => update('calcomToken', e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl outline-none text-sm font-bold" />
+                      ) : (
+                        <input type="password" value={settings.calendlyToken || ''} onChange={(e) => update('calendlyToken', e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl outline-none text-sm font-bold" />
+                      )}
+                      <button onClick={fetchEvents} disabled={isFetchingEvents || (settings.activeCalendarProvider === 'calcom' ? !settings.calcomToken : !settings.calendlyToken)} className="bg-slate-900 text-white px-6 rounded-2xl font-bold text-[9px] uppercase hover:bg-black transition-all disabled:opacity-50">{isFetchingEvents ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t.sync}</button>
                     </div>
                   </div>
                   {settings.eventTypes.length > 0 && <div className="p-4 bg-teal-50 border border-teal-100 rounded-2xl text-xs font-bold text-teal-900 flex items-center gap-2"><CheckCircle2 className="text-teal-600" size={16} /> Found {settings.eventTypes.length} events.</div>}
@@ -253,6 +310,35 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
           </div>
         </div>
       </div>
+
+      {pendingProviderSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="p-6 text-center space-y-4">
+              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Calendar size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight">Change Provider?</h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">Switching calendar providers will clear your imported events and service mappings. Do you want to continue?</p>
+            </div>
+            <div className="flex border-t border-slate-100 bg-slate-50/50 relative">
+              <button
+                onClick={() => setPendingProviderSwitch(null)}
+                className="flex-1 py-4 text-[10px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors uppercase tracking-widest"
+              >
+                Cancel
+              </button>
+              <div className="w-px bg-slate-200 absolute left-1/2 top-0 bottom-0"></div>
+              <button
+                onClick={() => executeProviderSwitch(pendingProviderSwitch)}
+                className="flex-1 py-4 text-[10px] font-bold text-rose-600 hover:bg-rose-50 transition-colors uppercase tracking-widest"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import { checkAvailability, bookAppointment } from './services/calendlyService';
+import { checkAvailability as checkCalendlyAvailability, bookAppointment as bookCalendlyAppointment } from './services/calendlyService';
+import { checkAvailability as checkCalcomAvailability, bookAppointment as bookCalcomAppointment } from './services/calcomService';
 import { Settings } from './types';
 
 export const tools: FunctionDeclaration[] = [
@@ -63,7 +64,10 @@ export async function handleToolCall(name: string, args: any, settings: Settings
             return `System: The clinic is closed on ${dayName}. Do not offer appointments for this day. Ask the user for another day.`;
         }
 
-        const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
+        const checkAvailability = settings.activeCalendarProvider === 'calcom' ? checkCalcomAvailability : checkCalendlyAvailability;
+        const token = settings.activeCalendarProvider === 'calcom' ? (settings.calcomToken || '') : settings.calendlyToken;
+
+        const avail = await checkAvailability(token, eventUri, date, settings.workingHours);
 
         // 2. Backend Guardrail: Filter Past Slots
         const now = new Date();
@@ -98,7 +102,11 @@ export async function handleToolCall(name: string, args: any, settings: Settings
             return "Error: Service not found or no event types configured.";
         }
 
-        const avail = await checkAvailability(settings.calendlyToken, eventUri, date, settings.workingHours);
+        const checkAvailability = settings.activeCalendarProvider === 'calcom' ? checkCalcomAvailability : checkCalendlyAvailability;
+        const bookAppointment = settings.activeCalendarProvider === 'calcom' ? bookCalcomAppointment : bookCalendlyAppointment;
+        const token = settings.activeCalendarProvider === 'calcom' ? (settings.calcomToken || '') : settings.calendlyToken;
+
+        const avail = await checkAvailability(token, eventUri, date, settings.workingHours);
         const slot = avail.slots.find(s => s.time === time);
 
         const eventType = settings.eventTypes.find(et => et.uri === eventUri);
@@ -115,7 +123,7 @@ export async function handleToolCall(name: string, args: any, settings: Settings
             locationConfig = { kind: 'physical', location: 'Denta Lux, Ljubljana' };
         }
 
-        const bookResult = await bookAppointment(settings.calendlyToken, eventUri, {
+        const bookResult = await bookAppointment(token, eventUri, {
             start: slot?.isoTime || `${date}T${time}:00Z`, name: userName, email
         }, locationConfig);
 

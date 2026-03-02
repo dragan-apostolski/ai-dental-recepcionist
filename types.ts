@@ -56,6 +56,8 @@ export interface Settings {
   calendlyToken: string;
   eventTypes: CalendlyEvent[];
   selectedEventTypeIds: string[]; // store URIs or IDs
+  calcomToken?: string;
+  activeCalendarProvider?: 'calendly' | 'calcom';
 }
 
 export interface TranscriptEntry {

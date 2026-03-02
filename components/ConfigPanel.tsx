@@ -16,10 +16,33 @@ interface ConfigPanelProps {
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, onClose }) => {
   const [isFetchingEvents, setIsFetchingEvents] = React.useState(false);
+  const [pendingProviderSwitch, setPendingProviderSwitch] = React.useState<'calendly' | 'calcom' | null>(null);
   const t = translations[settings.uiLanguage];
 
   const handleChange = (field: keyof Settings, value: any) => {
     onUpdate({ ...settings, [field]: value });
+  };
+
+  const handleProviderSwitch = (provider: 'calendly' | 'calcom') => {
+    if (settings.activeCalendarProvider === provider) return;
+
+    if (settings.eventTypes.length > 0 || settings.services.some(s => s.calendlyEventTypeUri)) {
+      setPendingProviderSwitch(provider);
+      return;
+    }
+
+    executeProviderSwitch(provider);
+  };
+
+  const executeProviderSwitch = (provider: 'calendly' | 'calcom') => {
+    onUpdate({
+      ...settings,
+      activeCalendarProvider: provider,
+      eventTypes: [],
+      selectedEventTypeIds: [],
+      services: settings.services.map(s => ({ ...s, calendlyEventTypeUri: '' }))
+    });
+    setPendingProviderSwitch(null);
   };
 
   const addService = (calEvent: CalendlyEvent) => {
@@ -121,8 +144,26 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
         </section>
 
         <section className="space-y-4">
-          <div className="flex justify-between items-center"><h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] border-l-2 border-teal-500 pl-3">{t.calendar}</h3><button onClick={fetchEvents} disabled={isFetchingEvents} className="text-[9px] text-teal-600 font-bold uppercase flex items-center gap-1 hover:underline"><RefreshCw size={10} className={isFetchingEvents ? 'animate-spin' : ''} /> {t.sync}</button></div>
-          <input type="password" value={settings.calendlyToken} onChange={(e) => handleChange('calendlyToken', e.target.value)} className="w-full p-3 text-sm font-bold bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Calendly Personal Access Token" />
+          <div className="flex justify-between items-center">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] border-l-2 border-teal-500 pl-3">{t.calendar}</h3>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => handleProviderSwitch('calendly')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.activeCalendarProvider !== 'calcom' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>Calendly</button>
+            <button onClick={() => handleProviderSwitch('calcom')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.activeCalendarProvider === 'calcom' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>Cal.com</button>
+          </div>
+
+          <div className="flex gap-2">
+            {settings.activeCalendarProvider === 'calcom' ? (
+              <input type="password" value={settings.calcomToken || ''} onChange={(e) => handleChange('calcomToken', e.target.value)} className="flex-1 p-3 text-sm font-bold bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Cal.com API Key" />
+            ) : (
+              <input type="password" value={settings.calendlyToken || ''} onChange={(e) => handleChange('calendlyToken', e.target.value)} className="flex-1 p-3 text-sm font-bold bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Calendly Personal Access Token" />
+            )}
+            <button onClick={fetchEvents} disabled={isFetchingEvents || (settings.activeCalendarProvider === 'calcom' ? !settings.calcomToken : !settings.calendlyToken)} className="px-6 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-black transition-all disabled:opacity-50 flex items-center gap-2">
+              <RefreshCw size={14} className={isFetchingEvents ? 'animate-spin' : ''} />
+              {t.sync}
+            </button>
+          </div>
 
           {/* Available Events List */}
           {settings.eventTypes.length > 0 && (
@@ -199,8 +240,43 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
       </div>
 
       <div className="p-6 bg-white border-t border-slate-100">
-        <button onClick={() => onSave(settings)} className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all transform active:scale-95 uppercase text-xs tracking-[0.2em]"><Save size={18} /> {t.save}</button>
+        <button onClick={() => {
+          // Derive selectedEventTypeIds purely from current services to drop any stale IDs
+          const freshIds = settings.services
+            .map(s => s.calendlyEventTypeUri)
+            .filter(Boolean);
+          onSave({ ...settings, selectedEventTypeIds: freshIds });
+        }} className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all transform active:scale-95 uppercase text-xs tracking-[0.2em]"><Save size={18} /> {t.save}</button>
       </div>
+
+      {pendingProviderSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="p-6 text-center space-y-4">
+              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                <RefreshCw size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight">Change Provider?</h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">Switching calendar providers will clear your imported events and service mappings. Do you want to continue?</p>
+            </div>
+            <div className="flex border-t border-slate-100 bg-slate-50/50 relative">
+              <button
+                onClick={() => setPendingProviderSwitch(null)}
+                className="flex-1 py-4 text-[10px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors uppercase tracking-widest"
+              >
+                Cancel
+              </button>
+              <div className="w-px bg-slate-200 absolute left-1/2 top-0 bottom-0"></div>
+              <button
+                onClick={() => executeProviderSwitch(pendingProviderSwitch)}
+                className="flex-1 py-4 text-[10px] font-bold text-rose-600 hover:bg-rose-50 transition-colors uppercase tracking-widest"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

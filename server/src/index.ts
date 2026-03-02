@@ -16,7 +16,8 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(cors());
-import { fetchAvailabilityRange } from './services/calendlyService';
+import { fetchAvailabilityRange as fetchCalendlyAvailability } from './services/calendlyService';
+import { fetchAvailabilityRange as fetchCalcomAvailability } from './services/calcomService';
 import { getCompanySettings } from './services/supabaseService';
 
 app.use(express.urlencoded({ extended: true })); // For Twilio webhooks
@@ -71,6 +72,7 @@ app.post('/api/schedule', async (req, res) => {
         // It calculates slots based on 1 hour fixed duration in the loop: `slotEnd.setHours(hour + 1, ...)`
         // So passing an empty string might be fine for the visual calendar.
 
+        const fetchAvailabilityRange = (req.body.activeCalendarProvider === 'calcom') ? fetchCalcomAvailability : fetchCalendlyAvailability;
         const schedule = await fetchAvailabilityRange(token, uri, startDate, endDate, workingHours);
         res.json({ schedule });
     } catch (error: any) {
