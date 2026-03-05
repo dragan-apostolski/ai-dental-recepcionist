@@ -134,12 +134,14 @@ const App: React.FC = () => {
 
     setIsRefreshing(true);
     try {
-      // Use configured backend port (ngrok or localhost:8080)
-      const protocol = window.location.protocol;
-      const host = window.location.hostname;
-      // If localhost, use 8080. If ngrok/other, use default port (no suffix).
-      const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
-      const apiUrl = `${protocol}//${host}${port}/api/schedule`;
+      const apiUrl = import.meta.env.VITE_BACKEND_URL
+        ? `${import.meta.env.VITE_BACKEND_URL}/api/schedule`
+        : (() => {
+          const protocol = window.location.protocol;
+          const host = window.location.hostname;
+          const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+          return `${protocol}//${host}${port}/api/schedule`;
+        })();
 
       const res = await fetch(apiUrl, {
         method: 'POST',
@@ -196,10 +198,14 @@ const App: React.FC = () => {
 
       const silentUpdate = async () => {
         try {
-          const protocol = window.location.protocol;
-          const host = window.location.hostname;
-          const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
-          const apiUrl = `${protocol}//${host}${port}/api/schedule`;
+          const apiUrl = import.meta.env.VITE_BACKEND_URL
+            ? `${import.meta.env.VITE_BACKEND_URL}/api/schedule`
+            : (() => {
+              const protocol = window.location.protocol;
+              const host = window.location.hostname;
+              const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+              return `${protocol}//${host}${port}/api/schedule`;
+            })();
 
           const res = await fetch(apiUrl, {
             method: 'POST',
@@ -256,11 +262,14 @@ const App: React.FC = () => {
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsHost = window.location.hostname;
-      // If localhost, use 8080. If ngrok/other, use default port (no suffix).
-      const wsPort = (wsHost === 'localhost' || wsHost === '127.0.0.1') ? ':8080' : '';
-      const wsUrl = `${wsProtocol}://${wsHost}${wsPort}/client-stream`;
+      const wsUrl = import.meta.env.VITE_WS_URL
+        ? `${import.meta.env.VITE_WS_URL}/client-stream`
+        : (() => {
+          const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+          const wsHost = window.location.hostname;
+          const wsPort = (wsHost === 'localhost' || wsHost === '127.0.0.1') ? ':8080' : '';
+          return `${wsProtocol}://${wsHost}${wsPort}/client-stream`;
+        })();
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
