@@ -7,12 +7,8 @@ export const SUPABASE_CONFIG = {
   // Your Supabase Project URL (e.g., https://xyz.supabase.co)
   url: import.meta.env.VITE_SUPABASE_URL,
 
-  // Your Supabase Publishable Key (sb_publishable_...)
-  // This is used for client-side operations restricted by Row Level Security (RLS).
+  // Your Supabase Publishable Key (often called 'anon' key)
+  // This is safe and REQUIRED to be exposed to the browser. 
+  // Supabase restricts access using Database Row Level Security (RLS), not by hiding this key.
   publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-
-  // Your Supabase Secret Key (sb_secret_...)
-  // WARNING: Never expose this in a public client-side application in production.
-  // It is provided here for completeness, but the app uses the Publishable Key by default.
-  secretKey: import.meta.env.VITE_SUPABASE_SECRET_KEY
 };

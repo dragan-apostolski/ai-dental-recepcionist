@@ -269,8 +269,9 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
                         for (const fc of msg.toolCall.functionCalls) {
                             if (!fc.name) continue;
                             console.log(`Tool call: ${fc.name}`);
+                            console.log(`Tool arguments:`, JSON.stringify(fc.args, null, 2));
                             if (!isTwilio) {
-                                ws.send(JSON.stringify({ type: 'log', message: `AI calling tool: ${fc.name}` }));
+                                ws.send(JSON.stringify({ type: 'log', message: `AI calling tool: ${fc.name} with args: ${JSON.stringify(fc.args)}` }));
                             }
 
                             const startTime = Date.now();
