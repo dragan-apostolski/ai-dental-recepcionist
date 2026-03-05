@@ -2,6 +2,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 import { tools, handleToolCall } from './tools';
 import { getSystemInstruction } from './prompts';
@@ -9,6 +10,7 @@ import { decodeMulaw, encodeMulaw, downsampleTo8k, upsampleTo16k } from './audio
 import { Settings } from './types';
 import { DEFAULT_SETTINGS } from './defaultSettings';
 import { GEMINI_MODEL } from './constants';
+import { logGeminiSession } from './services/supabaseService';
 
 dotenv.config();
 
@@ -119,6 +121,65 @@ const wss = new WebSocketServer({ server });
 async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: boolean) {
     let session: any = null;
 
+    // Session logging state
+    const sessionId = crypto.randomUUID();
+    const startedAt = new Date();
+    let turnCount = 0;
+    let lastUsageMetadata: any = null;
+    let sessionError: string | undefined;
+    let loggedAlready = false;
+    let pendingClose = false;
+
+    // The Live API responseTokensDetails only contains tokens for the CURRENT turn.
+    // We must accumulate them to get the total session output.
+    let totalOutputAudioTokens = 0;
+    let totalOutputTextTokens = 0;
+
+    // Captures + persists session data — safe to call multiple times
+    function closeAndLog() {
+        if (loggedAlready) return;
+        loggedAlready = true;
+
+        const endedAt = new Date();
+        const durationSecs = parseFloat(((endedAt.getTime() - startedAt.getTime()) / 1000).toFixed(2));
+        const um = lastUsageMetadata;
+
+        // Live API returns arrays: promptTokensDetails / responseTokensDetails [{modality, tokenCount}]
+        const findTokens = (details: any[], modality: string) =>
+            details?.find((d: any) => d.modality === modality)?.tokenCount ?? undefined;
+
+        // Input tokens are cumulative in promptTokensDetails
+        const inputDetails = um?.promptTokensDetails ?? [];
+        const inputAudio = findTokens(inputDetails, 'AUDIO');
+        const inputText = findTokens(inputDetails, 'TEXT');
+
+        // Output tokens must be accumulated manually
+        const outAudio = totalOutputAudioTokens > 0 ? totalOutputAudioTokens : undefined;
+        const outText = totalOutputTextTokens > 0 ? totalOutputTextTokens : undefined;
+
+        // True total = final input size + all output generated
+        const inputTotal = um?.promptTokenCount ?? 0;
+        const outputTotal = totalOutputAudioTokens + totalOutputTextTokens;
+        const trueTotal = inputTotal + outputTotal;
+
+        logGeminiSession({
+            session_id: sessionId,
+            started_at: startedAt.toISOString(),
+            ended_at: endedAt.toISOString(),
+            duration_secs: durationSecs,
+            input_audio_tokens: inputAudio,
+            output_audio_tokens: outAudio,
+            input_text_tokens: inputText,
+            output_text_tokens: outText,
+            total_tokens: trueTotal > 0 ? trueTotal : undefined,
+            turn_count: turnCount,
+            error: sessionError,
+        });
+
+        // Close the Gemini session if still open
+        try { if (session) session.close(); } catch (_) { }
+    }
+
     // Connect to Gemini
     try {
         const now = new Date();
@@ -140,10 +201,34 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
             },
             callbacks: {
                 onopen: () => {
-                    console.log("Gemini session connected");
+                    console.log(`Gemini session connected [${sessionId}]`);
                 },
                 onmessage: async (msg: LiveServerMessage) => {
                     if (ws.readyState !== WebSocket.OPEN) return;
+
+                    // Accumulate usage metadata
+                    if ((msg as any).usageMetadata) {
+                        const um = (msg as any).usageMetadata;
+                        lastUsageMetadata = um;
+
+                        // responseTokensDetails only has the current turn's output
+                        const outputDetails = um.responseTokensDetails ?? [];
+                        totalOutputAudioTokens += outputDetails.find((d: any) => d.modality === 'AUDIO')?.tokenCount ?? 0;
+                        totalOutputTextTokens += outputDetails.find((d: any) => d.modality === 'TEXT')?.tokenCount ?? 0;
+
+                        // If endCall was triggered earlier, log and disconnect now that we have the final metadata
+                        if (pendingClose) {
+                            pendingClose = false;
+                            closeAndLog();
+                            ws.close();
+                            return;
+                        }
+                    }
+
+                    // Count completed turns
+                    if (msg.serverContent?.turnComplete) {
+                        turnCount++;
+                    }
 
                     // Handle Audio
                     const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
@@ -208,14 +293,27 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
                                     response: { result }
                                 }
                             });
+
+                            // When endCall fires, we want to wait for the final metadata message
+                            // to capture the TEXT tokens from this function call output, then close.
+                            if (fc.name === 'endCall') {
+                                if (!isTwilio) {
+                                    ws.send(JSON.stringify({ type: 'event', name: 'call_ended' }));
+                                }
+                                pendingClose = true;
+                                // Fallback: if no final usageMetadata arrives within 4s, close anyway
+                                setTimeout(() => { if (!loggedAlready && ws.readyState === WebSocket.OPEN) { closeAndLog(); ws.close(); } }, 4000);
+                            }
                         }
                     }
                 },
                 onclose: (event) => {
-                    console.log("Gemini session closed", event);
+                    console.log(`Gemini session closed [${sessionId}]`, (event as any)?.reason ?? '');
+                    closeAndLog(); // fallback if Gemini closes first
                 },
                 onerror: (err) => {
-                    console.error("Gemini session error:", err);
+                    console.error(`Gemini session error [${sessionId}]:`, err);
+                    sessionError = err instanceof Error ? err.message : String(err);
                 }
             }
         });
@@ -226,10 +324,10 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
     } catch (err) {
         console.error("Gemini connect error:", err);
         ws.close();
-        return;
+        return null;
     }
 
-    return session;
+    return { session, closeAndLog };
 }
 
 
@@ -254,7 +352,9 @@ wss.on('connection', (ws, req) => {
                 console.log("Web Client Setup");
                 currentSettings = { ...DEFAULT_SETTINGS, ...data.settings };
                 if (!currentSettings.services) currentSettings.services = [];
-                geminiSession = await handleGeminiSession(ws, currentSettings, false);
+                const result = await handleGeminiSession(ws, currentSettings, false);
+                if (result) geminiSession = result.session;
+                (ws as any).__closeAndLog = result?.closeAndLog;
             }
 
             // 2. Web Client Audio (Input)
@@ -283,7 +383,9 @@ wss.on('connection', (ws, req) => {
                     }
 
                     // Connect Gemini Here 
-                    geminiSession = await handleGeminiSession(ws, currentSettings, true);
+                    const result = await handleGeminiSession(ws, currentSettings, true);
+                    if (result) geminiSession = result.session;
+                    (ws as any).__closeAndLog = result?.closeAndLog;
                 } else if (data.event === 'media' && geminiSession) {
                     // Twilio (Mulaw 8k) -> Gemini (PCM 16k)
                     const payload = Buffer.from(data.media.payload, 'base64');
@@ -311,8 +413,8 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         console.log("Client disconnected");
-        if (geminiSession) {
-            // geminiSession.close();
+        if ((ws as any).__closeAndLog) {
+            (ws as any).__closeAndLog();
         }
     });
 });

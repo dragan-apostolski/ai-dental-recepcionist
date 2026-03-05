@@ -299,6 +299,13 @@ const App: React.FC = () => {
           refreshSchedule(settings);
           return;
         }
+        if (msg.type === 'event' && msg.name === 'call_ended') {
+          addLog('AI is ending the call...');
+          pendingEndCallRef.current = true;
+          // Don't end immediately — let the farewell audio finish.
+          // source.onended will call endCall() once all audio drains.
+          return;
+        }
 
         if (msg.serverContent?.interrupted) {
           for (const source of sourcesRef.current.values()) { source.stop(); sourcesRef.current.delete(source); }

@@ -106,3 +106,57 @@ export const updateCompanySettings = async (settings: Settings): Promise<boolean
         return false;
     }
 };
+
+export interface GeminiSessionLog {
+    session_id: string;
+    started_at: string;
+    ended_at: string;
+    duration_secs: number;
+    input_audio_tokens?: number;
+    output_audio_tokens?: number;
+    input_text_tokens?: number;
+    output_text_tokens?: number;
+    total_tokens?: number;
+    turn_count: number;
+    error?: string;
+}
+
+/**
+ * Persists a Gemini Live API session summary to the gemini_sessions table.
+ */
+export const logGeminiSession = async (log: GeminiSessionLog): Promise<void> => {
+    const client = getSupabaseClient();
+    if (!client) {
+        console.warn('[SessionLog] Supabase client not available, skipping session log.');
+        return;
+    }
+
+    const payload = {
+        session_id: log.session_id,
+        started_at: log.started_at,
+        ended_at: log.ended_at,
+        duration_secs: log.duration_secs,
+        input_audio_tokens: log.input_audio_tokens ?? null,
+        output_audio_tokens: log.output_audio_tokens ?? null,
+        input_text_tokens: log.input_text_tokens ?? null,
+        output_text_tokens: log.output_text_tokens ?? null,
+        total_tokens: log.total_tokens ?? null,
+        turn_count: log.turn_count,
+        error: log.error ?? null,
+    };
+
+    console.log('[SessionLog] Writing session to gemini_sessions:', JSON.stringify(payload, null, 2));
+
+    const { error } = await client.from('gemini_sessions').insert(payload);
+
+    if (error) {
+        console.error('[SessionLog] Insert failed:', {
+            message: error.message,
+            code: error.code,
+            hint: error.hint,
+            details: error.details,
+        });
+    } else {
+        console.log(`[SessionLog] ✓ Session ${log.session_id} saved (${log.duration_secs}s | tokens: ${log.total_tokens ?? '?'} total, ${log.input_audio_tokens ?? '?'} in-audio, ${log.output_audio_tokens ?? '?'} out-audio | turns: ${log.turn_count})`);
+    }
+};
