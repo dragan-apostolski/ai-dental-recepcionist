@@ -134,7 +134,7 @@ const App: React.FC = () => {
 
     setIsRefreshing(true);
     try {
-      const apiUrl = import.meta.env.VITE_BACKEND_URL
+      const baseUrl = import.meta.env.VITE_BACKEND_URL
         ? `${import.meta.env.VITE_BACKEND_URL}/api/schedule`
         : (() => {
           const protocol = window.location.protocol;
@@ -143,19 +143,8 @@ const App: React.FC = () => {
           return `${protocol}//${host}${port}/api/schedule`;
         })();
 
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          token: config.activeCalendarProvider === 'calcom' ? config.calcomToken : config.calendlyToken,
-          activeCalendarProvider: config.activeCalendarProvider,
-          eventTypeIds: config.selectedEventTypeIds,
-          workingHours: config.workingHours,
-          days: config.days // Optional, passed if provided
-        })
-      });
+      const days = config.days || 90;
+      const res = await fetch(`${baseUrl}?days=${days}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -166,7 +155,6 @@ const App: React.FC = () => {
           setSchedule(prev => {
             const map = new Map(prev.map((d: DayAvailability) => [d.date, d]));
             newSchedule.forEach((d: DayAvailability) => map.set(d.date, d));
-            // Sort by date just in case
             return (Array.from(map.values()) as DayAvailability[]).sort((a, b) => a.date.localeCompare(b.date));
           });
         } else {
@@ -198,7 +186,7 @@ const App: React.FC = () => {
 
       const silentUpdate = async () => {
         try {
-          const apiUrl = import.meta.env.VITE_BACKEND_URL
+          const baseUrl = import.meta.env.VITE_BACKEND_URL
             ? `${import.meta.env.VITE_BACKEND_URL}/api/schedule`
             : (() => {
               const protocol = window.location.protocol;
@@ -207,28 +195,15 @@ const App: React.FC = () => {
               return `${protocol}//${host}${port}/api/schedule`;
             })();
 
-          const res = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: settings.activeCalendarProvider === 'calcom' ? settings.calcomToken : settings.calendlyToken,
-              activeCalendarProvider: settings.activeCalendarProvider,
-              eventTypeIds: settings.selectedEventTypeIds,
-              workingHours: settings.workingHours,
-              days: 7 // Only fetch next 7 days
-            })
-          });
+          const res = await fetch(`${baseUrl}?days=7`);
 
           if (res.ok) {
             const data = await res.json();
             const newSchedule: DayAvailability[] = data.schedule || [];
 
             setSchedule(prev => {
-              // Create a map of existing days
               const map = new Map(prev.map((d: DayAvailability) => [d.date, d]));
-              // Update with new data
               newSchedule.forEach(d => map.set(d.date, d));
-              // Convert back to sorted array
               return (Array.from(map.values()) as DayAvailability[]).sort((a, b) => a.date.localeCompare(b.date));
             });
           }

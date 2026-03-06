@@ -6,34 +6,34 @@ import { Settings } from './types';
 export const tools: FunctionDeclaration[] = [
     {
         name: 'checkAvailability',
-        description: 'Check available slots for a given date.',
+        description: 'Check available appointment slots for a given service and date.\n**Invocation Condition:** Invoke this tool *only after* the user has specified a service AND a desired date or time. Do NOT call this tool speculatively. Do NOT call this tool if the day is marked as Closed in Working Hours.',
         parameters: {
             type: Type.OBJECT,
             properties: {
-                date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format' },
-                serviceName: { type: Type.STRING, description: 'Name of the service' }
+                date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format. Calculate this from the current date before calling.' },
+                serviceName: { type: Type.STRING, description: 'Name of the service the user wants to book.' }
             },
             required: ['date', 'serviceName']
         }
     },
     {
         name: 'bookAppointment',
-        description: 'Book an appointment in Cal.com database.',
+        description: 'Creates a confirmed appointment booking in the calendar system. Returns success or an error.\n**Invocation Condition:** Invoke this tool *only after* ALL of the following have been collected AND the user has explicitly confirmed the summary with "Yes" (or equivalent): (1) service name, (2) date, (3) time, (4) full name, (5) email address. WARNING: You are FORBIDDEN from verbally confirming a booking to the user without calling this tool first. You must execute this tool to actually push the appointment to the calendar.',
         parameters: {
             type: Type.OBJECT,
             properties: {
-                service: { type: Type.STRING, description: 'Service name' },
-                date: { type: Type.STRING, description: 'Date (YYYY-MM-DD)' },
-                time: { type: Type.STRING, description: 'Time (e.g. 14:00)' },
-                name: { type: Type.STRING, description: 'User name' },
-                email: { type: Type.STRING, description: 'User email in latin characters. It always must be in a valid email address format.' }
+                service: { type: Type.STRING, description: 'Service name exactly as the user requested.' },
+                date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format.' },
+                time: { type: Type.STRING, description: 'Time in HH:MM format (e.g. 14:00).' },
+                name: { type: Type.STRING, description: 'Full name of the patient.' },
+                email: { type: Type.STRING, description: 'Patient email address in valid format using latin characters only.' }
             },
             required: ['service', 'date', 'time', 'name', 'email']
         }
     },
     {
         name: 'endCall',
-        description: 'End the phone call session.',
+        description: 'Terminates the current phone call session.\n**Invocation Condition:** Invoke this tool *only after* the user has indicated they are finished (e.g., said goodbye or confirmed they need nothing else). Always give a warm closing message before calling this tool.',
         parameters: { type: Type.OBJECT, properties: {} }
     }
 ];

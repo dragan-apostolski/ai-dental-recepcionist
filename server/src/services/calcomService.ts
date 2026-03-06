@@ -80,6 +80,26 @@ export const fetchAvailabilityRange = async (
         // V2 response with format=range: { status: "success", data: { "2024-03-01": [{ start: "...", end: "..." }] } }
         const slotsByDate: Record<string, CalcomV2SlotRaw[]> = data.data || {};
 
+        let scheduledEvents: any[] = [];
+        if (!skipDetails) {
+            try {
+                // Fetch all confirmed/accepted bookings for the date range
+                const bookingsUrl = `${CALCOM_API_BASE}/bookings?status=upcoming,past&take=250`;
+                const bookingsRes = await fetch(bookingsUrl, {
+                    headers: getHeaders(token, '2024-08-13')
+                });
+                if (bookingsRes.ok) {
+                    const bData = await bookingsRes.json();
+                    // V2 response: { status: 'success', data: [...] }
+                    const events = bData.status === 'success' ? bData.data : (bData.bookings || bData);
+                    scheduledEvents = Array.isArray(events) ? events : [];
+                    console.log(`[CalCom] Fetched ${scheduledEvents.length} bookings`);
+                }
+            } catch (e) {
+                console.error('Error fetching cal.com bookings:', e);
+            }
+        }
+
         const days: DayAvailability[] = [];
         const startD = new Date(startDate);
         const endD = new Date(endDate);
@@ -113,7 +133,43 @@ export const fetchAvailabilityRange = async (
                 }
             }
 
+            // Append booked slots for the day
+            for (const event of scheduledEvents) {
+                if (!event.start) continue;
+                const eventDate = new Date(event.start);
+                // Compare local date to `dateStr` (which is UTC day, but typically works. Let's use local date block check)
+                // dateStr is d.toISOString().split('T')[0], which is the day we are iterating on the UTC calendar check.
+                // Assuming appointments are within the valid day range:
+                const eventDateLocal = eventDate.toLocaleDateString('en-CA'); // gets YYYY-MM-DD in local time
+                const compareDate = new Date(eventDate.getTime() - eventDate.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+                if (compareDate === dateStr || eventDate.toISOString().split('T')[0] === dateStr) {
+                    let attendeeName = 'Booked';
+                    let attendeeEmail: string | undefined;
+                    if (event.attendees && event.attendees.length > 0) {
+                        attendeeName = event.attendees[0].name || event.attendees[0].email || 'Booked';
+                        attendeeEmail = event.attendees[0].email;
+                    } else if (event.attendee) {
+                        attendeeName = event.attendee.name || event.attendee.email || 'Booked';
+                        attendeeEmail = event.attendee.email;
+                    } else if (event.responses && event.responses.name) {
+                        attendeeName = event.responses.name.value || event.responses.name || 'Booked';
+                        attendeeEmail = event.responses.email?.value || event.responses.email;
+                    }
+
+                    daySlots.push({
+                        time: eventDate.toLocaleTimeString('mk-MK', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Skopje' }),
+                        isoTime: eventDate.toISOString(),
+                        available: false,
+                        bookedBy: attendeeName,
+                        attendeeEmail,
+                        serviceTitle: event.title || event.eventType?.title || 'Meeting'
+                    });
+                }
+            }
+
             if (daySlots.length > 0) {
+                // Sort day slots by time
+                daySlots.sort((a, b) => new Date(a.isoTime).getTime() - new Date(b.isoTime).getTime());
                 days.push({ date: dateStr, slots: daySlots });
             }
         }

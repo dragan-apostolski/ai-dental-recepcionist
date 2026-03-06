@@ -15,6 +15,7 @@ export interface BookingSlot {
   isoTime: string;
   available: boolean;
   bookedBy?: string;
+  attendeeEmail?: string;
   serviceTitle?: string;
 }
 

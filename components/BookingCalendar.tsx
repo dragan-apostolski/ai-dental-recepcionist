@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle2, Lock } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, Lock, Mail } from 'lucide-react';
 import { DayAvailability, BookingSlot } from '../types';
 import { translations } from '../i18n';
 
@@ -129,30 +129,38 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                 return (
                   <div
                     key={`${currentDay.date}-${slot.time}-${index}`}
-                    className={`flex items-center px-8 py-6 transition-all duration-300 ${isAvailable
-                      ? 'bg-teal-50/40 hover:bg-teal-50/80 border-l-4 border-l-teal-500'
+                    className={`flex items-center px-8 transition-all duration-300 ${isAvailable
+                      ? 'py-5 bg-teal-50/40 hover:bg-teal-50/80 border-l-4 border-l-teal-500'
                       : isBooked
-                        ? 'bg-slate-50/50 grayscale-[0.5]'
-                        : 'bg-white opacity-50'
+                        ? 'py-5 bg-amber-50/50 border-l-4 border-l-amber-400 hover:bg-amber-50/80'
+                        : 'py-5 bg-white opacity-40'
                       }`}
                   >
                     <div className="w-20 shrink-0">
-                      <span className={`text-base font-bold tracking-tight ${isBooked ? 'text-slate-400' : 'text-slate-900'}`}>
+                      <span className={`text-base font-bold tracking-tight ${isBooked ? 'text-amber-900/70' : 'text-slate-900'}`}>
                         {slot.time}
                       </span>
                     </div>
-                    <div className="flex items-center gap-5 flex-1">
-                      <div className={`w-2.5 h-2.5 rounded-full ${isAvailable ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)] animate-pulse' : isBooked ? 'bg-amber-400' : 'bg-slate-200'}`} />
-                      <div className="flex-1">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${isAvailable ? 'bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)] animate-pulse' : isBooked ? 'bg-amber-400' : 'bg-slate-200'}`} />
+                      <div className="flex-1 min-w-0">
                         {isBooked ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                              <Lock size={12} className="text-amber-500" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-amber-900 flex items-center gap-1.5 shrink-0">
+                              <Lock size={10} className="text-amber-500" />
                               {slot.bookedBy}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                              {slot.serviceTitle}
-                            </span>
+                            {slot.attendeeEmail && (
+                              <span className="text-[11px] text-amber-700/70 flex items-center gap-1 truncate">
+                                <Mail size={9} className="text-amber-500/50 shrink-0" />
+                                {slot.attendeeEmail}
+                              </span>
+                            )}
+                            {slot.serviceTitle && (
+                              <span className="text-[9px] text-amber-600 font-bold uppercase tracking-wider shrink-0">
+                                · {slot.serviceTitle}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className={`text-sm font-bold uppercase tracking-tight ${isAvailable ? 'text-teal-800' : 'text-slate-300 italic'}`}>
@@ -161,7 +169,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ schedule, uiLanguage 
                         )}
                       </div>
                       {isAvailable && (
-                        <div className="bg-white text-teal-700 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase flex items-center gap-2 border border-teal-100 shadow-sm">
+                        <div className="bg-white text-teal-700 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase flex items-center gap-2 border border-teal-100 shadow-sm shrink-0">
                           <CheckCircle2 size={12} className="text-teal-500" />
                           {t.open}
                         </div>

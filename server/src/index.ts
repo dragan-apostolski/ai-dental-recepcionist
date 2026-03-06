@@ -29,9 +29,45 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
+// GET /api/schedule — server reads token from DB (no token needed from client)
+app.get('/api/schedule', async (req, res) => {
+    try {
+        const dbSettings = await getCompanySettings();
+        if (!dbSettings) {
+            res.status(503).json({ error: 'Could not load settings from database' });
+            return;
+        }
+
+        const token = dbSettings.activeCalendarProvider === 'calcom'
+            ? dbSettings.calcomToken
+            : dbSettings.calendlyToken;
+
+        if (!token) {
+            res.status(400).json({ error: 'No calendar token configured' });
+            return;
+        }
+
+        const days = req.query.days ? parseInt(req.query.days as string, 10) : 90;
+        const startDate = new Date().toISOString();
+        const endDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        const uri = dbSettings.selectedEventTypeIds?.[0] || '';
+
+        const fetchFn = dbSettings.activeCalendarProvider === 'calcom'
+            ? fetchCalcomAvailability
+            : fetchCalendlyAvailability;
+
+        const schedule = await fetchFn(token, uri, startDate, endDate, dbSettings.workingHours);
+        res.json({ schedule });
+    } catch (error: any) {
+        console.error('Error in GET /api/schedule:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // API Endpoint to get Schedule
 // Expects: token, eventTypeUri (or fetch all?), workingHours (json string or use default?)
 // For simplicity in this demo, we accept a POST to pass user settings easily.
+// POST /api/schedule — legacy, token passed from client
 app.post('/api/schedule', async (req, res) => {
     try {
         const { token, eventTypeIds, workingHours, days } = req.body;
@@ -195,7 +231,7 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
                 speechConfig: {
                     voiceConfig: { prebuiltVoiceConfig: { voiceName: settings.voiceName } }
                 },
-                temperature: 0.7,
+                temperature: 0.5,
                 systemInstruction: getSystemInstruction(settings, currentDateTimeStr),
                 tools: [{ functionDeclarations: tools }],
             },
