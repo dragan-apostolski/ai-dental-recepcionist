@@ -30,3 +30,6 @@ steps:
 
 images:
   - 'gcr.io/$PROJECT_ID/github.com/dragan-apostolski/ai-dental-recepcionist:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
