@@ -1,12 +1,12 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import { checkAvailability as checkCalendlyAvailability, bookAppointment as bookCalendlyAppointment } from './services/calendlyService';
-import { checkAvailability as checkCalcomAvailability, bookAppointment as bookCalcomAppointment } from './services/calcomService';
+import { checkAvailability as checkCalendlyAvailability, bookAppointment as bookCalendlyAppointment, fetchAvailabilityRange as fetchCalendlyAvailabilityRange } from './services/calendlyService';
+import { checkAvailability as checkCalcomAvailability, bookAppointment as bookCalcomAppointment, fetchAvailabilityRange as fetchCalcomAvailabilityRange } from './services/calcomService';
 import { Settings } from './types';
 
 export const tools: FunctionDeclaration[] = [
     {
         name: 'checkAvailability',
-        description: 'Check available appointment slots for a given service and date.\n**Invocation Condition:** Invoke this tool *only after* the user has specified a service AND a desired date or time. Do NOT call this tool speculatively. Do NOT call this tool if the day is marked as Closed in Working Hours.',
+        description: 'Check available appointment slots for a given service and exact date.\n**Invocation Condition:** Invoke this tool *only after* the user has specified a service AND a specific desired date or time. Do NOT call this tool speculatively. Do NOT call this tool if the user asks for the "first available" or "earliest" slot (use findFirstAvailableSlot instead). Do NOT call this tool if the day is marked as Closed in Working Hours.',
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -14,6 +14,17 @@ export const tools: FunctionDeclaration[] = [
                 serviceName: { type: Type.STRING, description: 'Name of the service the user wants to book.' }
             },
             required: ['date', 'serviceName']
+        }
+    },
+    {
+        name: 'findFirstAvailableSlot',
+        description: 'Finds the earliest available appointment slots for a given service within the next 14 days.\n**Invocation Condition:** Invoke this tool when the user asks for the first available slot, or tells you to propose a time. Do NOT call this tool if the user specified a concrete date (use checkAvailability instead).',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                serviceName: { type: Type.STRING, description: 'Name of the service the user wants to book.' }
+            },
+            required: ['serviceName']
         }
     },
     {
@@ -96,6 +107,51 @@ export async function handleToolCall(name: string, args: any, settings: Settings
 
         const slots = validSlots.map(s => s.time);
         return slots.length > 0 ? `Available slots: ${slots.join(', ')}` : "No slots available for this date.";
+
+    } else if (name === 'findFirstAvailableSlot') {
+        const { serviceName } = args;
+        const services = settings.services || [];
+        const configuredService = services.find(s => s.name.toLowerCase().includes(serviceName.toLowerCase()));
+        let eventUri = configuredService?.calendlyEventTypeUri;
+
+        if (!eventUri) {
+            const et = settings.eventTypes.find(t => t.title.toLowerCase().includes(serviceName.toLowerCase()));
+            eventUri = et?.uri;
+        }
+
+        if (!eventUri) {
+            return "Error: Service not configured.";
+        }
+
+        const fetchAvailabilityRange = settings.activeCalendarProvider === 'calcom' ? fetchCalcomAvailabilityRange : fetchCalendlyAvailabilityRange;
+        const token = settings.activeCalendarProvider === 'calcom' ? (settings.calcomToken || '') : settings.calendlyToken;
+
+        const today = new Date();
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 14);
+
+        const startStr = today.toISOString();
+        const endStr = endDate.toISOString();
+
+        // Pass skipDetails=true to speed up the check (we don't need patient names for this)
+        const availDays = await fetchAvailabilityRange(token, eventUri, startStr, endStr, settings.workingHours, true);
+
+        const now = new Date();
+
+        for (const day of availDays) {
+            const validSlots = day.slots.filter(s => {
+                if (!s.available) return false;
+                const slotTime = new Date(s.isoTime);
+                return slotTime > now;
+            });
+
+            if (validSlots.length > 0) {
+                const slots = validSlots.slice(0, 3).map(s => s.time);
+                return `First available slots are on ${day.date}: ${slots.join(', ')}. Ask the user if any of these work, or if they prefer a different day.`;
+            }
+        }
+
+        return "No slots available in the next 14 days.";
 
     } else if (name === 'bookAppointment') {
         const { service, date, time, name: userName, email } = args;
