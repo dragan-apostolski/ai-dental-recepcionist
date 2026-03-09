@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS: Settings = {
     language: 'mk',
     uiLanguage: 'mk',
     voiceName: 'Charon',
+    aiProvider: 'gemini',
+    openaiVoice: 'alloy',
     calendlyToken: process.env.VITE_CALENDLY_TOKEN || '', // Ideally should be in .env
     eventTypes: [],
     selectedEventTypeIds: []

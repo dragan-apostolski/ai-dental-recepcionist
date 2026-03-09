@@ -76,6 +76,8 @@ const App: React.FC = () => {
     language: 'mk',
     uiLanguage: 'mk',
     voiceName: 'Charon',
+    aiProvider: 'gemini',
+    openaiVoice: 'alloy',
     calendlyToken: '',
     eventTypes: [],
     selectedEventTypeIds: []

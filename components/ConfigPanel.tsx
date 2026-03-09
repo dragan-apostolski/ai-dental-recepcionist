@@ -235,6 +235,25 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ settings, onUpdate, onSave, o
                 <option value="mk">Macedonian</option><option value="sl">Slovenian</option><option value="en">English</option>
               </select>
             </div>
+            <div className="grid grid-cols-1 gap-2 mt-2">
+              <label className="text-[9px] font-bold uppercase text-slate-400">AI Provider</label>
+              <div className="flex gap-2">
+                <button onClick={() => handleChange('aiProvider', 'gemini')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.aiProvider !== 'openai' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>Gemini</button>
+                <button onClick={() => handleChange('aiProvider', 'openai')} className={`flex-1 py-3 rounded-xl border font-bold text-xs uppercase transition-all ${settings.aiProvider === 'openai' ? 'bg-teal-600 text-white border-teal-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>OpenAI</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <label className="text-[9px] font-bold uppercase text-slate-400">Agent Voice</label>
+              {settings.aiProvider === 'openai' ? (
+                <select value={settings.openaiVoice || 'alloy'} onChange={(e) => handleChange('openaiVoice', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none">
+                  <option value="alloy">Alloy</option><option value="ash">Ash</option><option value="ballad">Ballad</option><option value="coral">Coral</option><option value="echo">Echo</option><option value="sage">Sage</option><option value="shimmer">Shimmer</option><option value="verse">Verse</option>
+                </select>
+              ) : (
+                <select value={settings.voiceName} onChange={(e) => handleChange('voiceName', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none">
+                  <option value="Charon">Charon</option><option value="Kore">Kore</option><option value="Puck">Puck</option><option value="Fenrir">Fenrir</option><option value="Zephyr">Zephyr</option>
+                </select>
+              )}
+            </div>
           </div>
         </section>
       </div>

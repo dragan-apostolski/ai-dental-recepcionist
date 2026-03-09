@@ -17,6 +17,21 @@ export const tools: FunctionDeclaration[] = [
         }
     },
     {
+        name: 'verifyBookingData',
+        description: 'Verifies the collected patient information before requesting final confirmation to book.\n**Invocation Condition:** Invoke this tool *only after* ALL of the following have been collected: (1) service name, (2) date, (3) time, (4) full name, (5) email address. This tool MUST be called BEFORE you ask the user to confirm the booking.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                service: { type: Type.STRING, description: 'Service name exactly as the user requested.' },
+                date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format.' },
+                time: { type: Type.STRING, description: 'Time in HH:MM format (e.g. 14:00).' },
+                name: { type: Type.STRING, description: 'Full name of the patient.' },
+                email: { type: Type.STRING, description: 'Patient email address in valid format using latin characters only.' }
+            },
+            required: ['service', 'date', 'time', 'name', 'email']
+        }
+    },
+    {
         name: 'bookAppointment',
         description: 'Creates a confirmed appointment booking in the calendar system. Returns success or an error.\n**Invocation Condition:** Invoke this tool *only after* ALL of the following have been collected AND the user has explicitly confirmed the summary with "Yes" (or equivalent): (1) service name, (2) date, (3) time, (4) full name, (5) email address. WARNING: You are FORBIDDEN from verbally confirming a booking to the user without calling this tool first. You must execute this tool to actually push the appointment to the calendar.',
         parameters: {
@@ -132,6 +147,8 @@ export async function handleToolCall(name: string, args: any, settings: Settings
         } else {
             return `Error: ${bookResult.error}`;
         }
+    } else if (name === 'verifyBookingData') {
+        return "Data is verified. You MUST immediately call bookAppointment to secure the slot.";
     } else if (name === 'endCall') {
         return "ok";
     }

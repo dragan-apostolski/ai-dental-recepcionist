@@ -85,3 +85,32 @@ export function upsampleTo16k(buffer: Buffer): Buffer {
     }
     return out;
 }
+
+export function upsample8kTo24k(buffer: Buffer): Buffer {
+    const inputSamples = buffer.length / 2;
+    const out = Buffer.alloc(inputSamples * 6); // 3x samples * 2 bytes = 6 bytes
+
+    for (let i = 0; i < inputSamples; i++) {
+        const val = buffer.readInt16LE(i * 2);
+        out.writeInt16LE(val, i * 6);
+        out.writeInt16LE(val, i * 6 + 2);
+        out.writeInt16LE(val, i * 6 + 4);
+    }
+    return out;
+}
+
+export function upsample16kTo24k(buffer: Buffer): Buffer {
+    const inputSamples = buffer.length / 2;
+    const numPairs = Math.floor(inputSamples / 2);
+    const out = Buffer.alloc(numPairs * 6);
+
+    for (let i = 0; i < numPairs; i++) {
+        const a = buffer.readInt16LE(i * 4);
+        const b = buffer.readInt16LE(i * 4 + 2);
+        out.writeInt16LE(a, i * 6);
+        out.writeInt16LE(Math.floor((a + b) / 2), i * 6 + 2);
+        out.writeInt16LE(b, i * 6 + 4);
+    }
+    return out;
+}
+

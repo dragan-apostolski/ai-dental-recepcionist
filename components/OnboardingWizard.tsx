@@ -138,32 +138,43 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ initialSettings, on
     if (isPreviewing) return;
     setIsPreviewing(voiceName);
     try {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: t.previewText }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-        },
+      const protocol = window.location.protocol;
+      const host = window.location.hostname;
+      const port = (host === 'localhost' || host === '127.0.0.1') ? ':8080' : '';
+      const apiUrl = `${protocol}//${host}${port}/api/tts`;
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: t.previewText, voiceName })
       });
-      const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+      if (!res.ok) throw new Error('TTS failed');
+      const data = await res.json();
+      const audioData = data.audioData;
+
       if (audioData) {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         const binaryString = atob(audioData);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
         const dataInt16 = new Int16Array(bytes.buffer);
+
         const buffer = audioCtx.createBuffer(1, dataInt16.length, 24000);
         const channelData = buffer.getChannelData(0);
         for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
+
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
         source.connect(audioCtx.destination);
         source.onended = () => setIsPreviewing(null);
         source.start();
-      } else setIsPreviewing(null);
-    } catch (e) { setIsPreviewing(null); }
+      } else {
+        setIsPreviewing(null);
+      }
+    } catch (e) {
+      setIsPreviewing(null);
+    }
   };
 
   return (

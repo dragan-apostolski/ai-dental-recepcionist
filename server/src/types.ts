@@ -59,6 +59,8 @@ export interface Settings {
   selectedEventTypeIds: string[]; // store URIs or IDs
   calcomToken?: string;
   activeCalendarProvider?: 'calendly' | 'calcom';
+  aiProvider?: 'gemini' | 'openai';
+  openaiVoice?: 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse';
 }
 
 export interface TranscriptEntry {

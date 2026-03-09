@@ -11,7 +11,7 @@ import { Settings } from './types';
 import { DEFAULT_SETTINGS } from './defaultSettings';
 import { GEMINI_MODEL } from './constants';
 import { logGeminiSession } from './services/supabaseService';
-
+import { handleOpenAISession } from './services/openaiService';
 dotenv.config();
 
 const app = express();
@@ -143,8 +143,38 @@ app.post('/api/settings', async (req, res) => {
     }
 });
 
+// TTS Endpoint for frontend voice preview
+app.post('/api/tts', async (req, res) => {
+    try {
+        const { text, voiceName } = req.body;
+        if (!text || !voiceName) {
+            res.status(400).json({ error: 'text and voiceName are required' });
+            return;
+        }
+
+        const response = await genAI.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text }] }],
+            config: {
+                responseModalities: ["AUDIO"],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+            },
+        });
+
+        const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (audioData) {
+            res.json({ audioData });
+        } else {
+            res.status(500).json({ error: 'Failed to generate audio' });
+        }
+    } catch (error: any) {
+        console.error("Error in /api/tts:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Initialize Gemini
-const genAI = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY as string });
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 // GEMINI_MODEL imported from constants.ts
 
 const server = app.listen(port, () => {
@@ -371,7 +401,7 @@ async function handleGeminiSession(ws: WebSocket, settings: Settings, isTwilio: 
 wss.on('connection', (ws, req) => {
     console.log(`New connection from ${req.url}`);
 
-    let geminiSession: any = null;
+    let aiSession: any = null;
     let currentSettings: Settings = { ...DEFAULT_SETTINGS };
     let isTwilio = false;
     let streamSid = '';
@@ -389,17 +419,22 @@ wss.on('connection', (ws, req) => {
                 console.log("Web Client Setup");
                 currentSettings = { ...DEFAULT_SETTINGS, ...data.settings };
                 if (!currentSettings.services) currentSettings.services = [];
-                const result = await handleGeminiSession(ws, currentSettings, false);
-                if (result) geminiSession = result.session;
+
+                let result;
+                if (currentSettings.aiProvider === 'openai') {
+                    result = await handleOpenAISession(ws, currentSettings, false);
+                } else {
+                    result = await handleGeminiSession(ws, currentSettings, false);
+                }
+
+                if (result) aiSession = result.session;
                 (ws as any).__closeAndLog = result?.closeAndLog;
             }
 
             // 2. Web Client Audio (Input)
             if (data.realtimeInput && !isTwilio) {
-                if (geminiSession) {
-                    // Forward directly to Gemini
-                    // data.realtimeInput has { media: { data: base64, mimeType: ... } }
-                    geminiSession.sendRealtimeInput(data.realtimeInput);
+                if (aiSession) {
+                    aiSession.sendRealtimeInput(data.realtimeInput);
                 }
             }
 
@@ -419,24 +454,37 @@ wss.on('connection', (ws, req) => {
                         console.log("Using default settings (Supabase fetch failed or returned null)");
                     }
 
-                    // Connect Gemini Here 
-                    const result = await handleGeminiSession(ws, currentSettings, true);
-                    if (result) geminiSession = result.session;
+                    // Connect AI Here 
+                    let result;
+                    if (currentSettings.aiProvider === 'openai') {
+                        result = await handleOpenAISession(ws, currentSettings, true);
+                    } else {
+                        result = await handleGeminiSession(ws, currentSettings, true);
+                    }
+                    if (result) aiSession = result.session;
                     (ws as any).__closeAndLog = result?.closeAndLog;
-                } else if (data.event === 'media' && geminiSession) {
-                    // Twilio (Mulaw 8k) -> Gemini (PCM 16k)
+                } else if (data.event === 'media' && aiSession) {
                     const payload = Buffer.from(data.media.payload, 'base64');
                     // 1. Decode Mulaw -> PCM 8k
                     const pcm8k = decodeMulaw(payload);
-                    // 2. Upsample 8k -> 16k
-                    const pcm16k = upsampleTo16k(pcm8k);
 
-                    geminiSession.sendRealtimeInput({
-                        media: {
-                            data: pcm16k.toString('base64'),
-                            mimeType: "audio/pcm;rate=16000"
-                        }
-                    });
+                    if (currentSettings.aiProvider === 'openai') {
+                        aiSession.sendRealtimeInput({
+                            media: {
+                                data: pcm8k.toString('base64'),
+                                mimeType: "audio/pcm;rate=8000"
+                            }
+                        });
+                    } else {
+                        // 2. Upsample 8k -> 16k for Gemini
+                        const pcm16k = upsampleTo16k(pcm8k);
+                        aiSession.sendRealtimeInput({
+                            media: {
+                                data: pcm16k.toString('base64'),
+                                mimeType: "audio/pcm;rate=16000"
+                            }
+                        });
+                    }
                 } else if (data.event === 'stop') {
                     console.log("Twilio Stream Stopped");
                     ws.close();
